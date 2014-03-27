@@ -312,7 +312,8 @@ BgpPeer::BgpPeer(BgpServer *server, RoutingInstance *instance,
           remote_bgp_id_(0),
           local_bgp_id_(server_->bgp_identifier()),
           peer_type_((peer_as_ == local_as_) ? BgpProto::IBGP : BgpProto::EBGP),
-          policy_(peer_type_, RibExportPolicy::BGP, peer_as_, -1, 0),
+          policy_(peer_type_, RibExportPolicy::BGP, peer_as_, -1,
+                  config_->cluster_id()),
           peer_close_(new PeerClose(this)),
           peer_stats_(new PeerStats(this)),
           deleter_(new DeleteActor(this)),
@@ -419,6 +420,11 @@ void BgpPeer::ConfigUpdate(const BgpNeighborConfig *config) {
                                 "internal" : "external");
         policy_.type = peer_type_;
         policy_.as_number = peer_as_;
+        clear_session = true;
+    }
+
+    if (policy_.cluster_id != config_->cluster_id()) {
+        policy_.cluster_id = config_->cluster_id();
         clear_session = true;
     }
 
@@ -1430,4 +1436,8 @@ void BgpPeer::reset_flap_count() {
     PeerFlapInfo flap_info;
     peer_info.set_flap_info(flap_info);
     BGPPeerInfo::Send(peer_info);
+}
+
+uint32_t BgpPeer::cluster_id() const {
+    return config_->cluster_id();
 }

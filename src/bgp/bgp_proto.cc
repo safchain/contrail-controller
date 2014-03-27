@@ -844,6 +844,23 @@ public:
                       BgpPathAttributeExtendedCommunityList> Sequence;
 };
 
+class BgpPathAttributeClusterListData :
+        public ProtoElement<BgpPathAttributeClusterListData> {
+  public:
+    static const int kSize = -1;
+    typedef VectorAccessor<BgpAttrClusterList, uint32_t,
+                           &BgpAttrClusterList::cluster_list> Setter;
+};
+
+class BgpPathAttributeClusterList :
+        public ProtoSequence<BgpPathAttributeClusterList> {
+  public:
+    typedef BgpAttrClusterList ContextType;
+    typedef BgpContextSwap<BgpAttrClusterList> ContextSwap;
+    typedef mpl::list<BgpPathAttrLength,
+                      BgpPathAttributeClusterListData> Sequence;
+};
+
 class BgpPathAttributeReserved : public ProtoElement<BgpPathAttributeReserved> {
 public:
     const static int kSize = 1;
@@ -1089,6 +1106,11 @@ public:
           mpl::pair<mpl::int_<BgpAttribute::AsPath>, BgpPathAttributeAsPath>,
           mpl::pair<mpl::int_<BgpAttribute::Communities>,
                     BgpPathAttributeCommunities>,
+          mpl::pair<mpl::int_<BgpAttribute::OriginatorId>,
+                    BgpAttrTemplate<BgpAttrOriginatorId, 4, uint32_t,
+                                    &BgpAttrOriginatorId::originator_id> >,
+          mpl::pair<mpl::int_<BgpAttribute::ClusterList>,
+                    BgpPathAttributeClusterList>,
           mpl::pair<mpl::int_<BgpAttribute::MPReachNlri>,
                     BgpPathAttributeMpReachNlriSequence>,
           mpl::pair<mpl::int_<BgpAttribute::MPUnreachNlri>,

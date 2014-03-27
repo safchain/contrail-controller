@@ -213,6 +213,27 @@ struct BgpAttrOList : public BgpAttribute {
     virtual std::string ToString() const;
 };
 
+struct BgpAttrOriginatorId : public BgpAttribute {
+    static const int kSize = 4;
+    static const uint8_t kFlags = Optional;
+    BgpAttrOriginatorId();
+    BgpAttrOriginatorId(const BgpAttribute &rhs);
+    virtual int CompareTo(const BgpAttribute &rhs_attr) const;
+    virtual void ToCanonical(BgpAttr *attr);
+    virtual std::string ToString() const;
+    uint32_t originator_id;
+};
+
+struct BgpAttrClusterList : public BgpAttribute {
+    static const uint8_t kFlags = Optional;
+    BgpAttrClusterList();
+    BgpAttrClusterList(const BgpAttribute &rhs);
+    virtual int CompareTo(const BgpAttribute &rhs) const;
+    virtual void ToCanonical(BgpAttr *attr);
+    virtual std::string ToString() const;
+    std::vector<u_int32_t> cluster_list;
+};
+
 struct BgpAttrUnknown : public BgpAttribute {
     BgpAttrUnknown() : BgpAttribute() {}
     explicit BgpAttrUnknown(const BgpAttribute &rhs) : BgpAttribute(rhs) {}
@@ -266,6 +287,16 @@ public:
     const IpAddress &nexthop() const { return nexthop_; }
     uint32_t med() const { return med_; }
     uint32_t local_pref() const { return local_pref_; }
+    uint32_t originator_id() const { return originator_id_; }
+    void set_originator_id(uint32_t originator_id) {
+        originator_id_ = originator_id;
+    }
+    const std::vector<uint32_t> &cluster_list() const { return cluster_list_; }
+    void ClusterListAppend(uint32_t cluster_id);
+
+    void set_cluster_list(const std::vector<uint32_t> cluster_list) {
+        cluster_list_ = cluster_list;
+    }
     bool atomic_aggregate() const { return atomic_aggregate_; }
     as_t aggregator_as_num() const { return aggregator_as_num_; }
     uint32_t neighbor_as() const;
@@ -278,6 +309,11 @@ public:
     LabelBlockPtr label_block() const { return label_block_; }
     BgpOListPtr olist() const { return olist_; }
     BgpAttrDB *attr_db() const { return attr_db_; }
+
+    /*
+     * Return true if the cluster list contains the specified id.
+     */
+    bool ClusterListContains(uint32_t cluster_id) const;
 
 private:
     friend class BgpAttrDB;
@@ -300,6 +336,8 @@ private:
     ExtCommunityPtr ext_community_;
     LabelBlockPtr label_block_;
     BgpOListPtr olist_;
+    uint32_t originator_id_;
+    std::vector<uint32_t> cluster_list_;
 };
 
 inline int intrusive_ptr_add_ref(const BgpAttr *cattrp) {

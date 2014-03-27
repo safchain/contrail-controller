@@ -380,17 +380,6 @@ boost::any BgpTestUtil::GetUserData(std::string key) {
     }
 }
 
-// Constructor to create different neighbor configs with custom names.
-// Used in unit testing mostly.
-BgpNeighborConfig::BgpNeighborConfig(const BgpInstanceConfig *instance,
-                                     const string &remote_name,
-                                     const string &local_name,
-                                     const autogen::BgpRouter *router)
-        : instance_(instance), name_(remote_name) {
-    const autogen::BgpRouterParams &params = router->parameters();
-    peer_config_ = params;
-}
-
 void BgpServerTest::GlobalSetUp(void) {
     BgpObjectFactory::Register<BgpPeer>(
         boost::factory<BgpPeerTest *>());

@@ -78,10 +78,6 @@ public:
                       const std::string &local_name,
                       const autogen::BgpRouter *router,
                       const autogen::BgpSession *session);
-    BgpNeighborConfig(const BgpInstanceConfig *instance,
-                      const std::string &remote_name,
-                      const std::string &local_name,
-                      const autogen::BgpRouter *router);
     ~BgpNeighborConfig();
 
     static void Initialize();
@@ -105,13 +101,18 @@ public:
         return attributes_;
     }
 
+    uint32_t cluster_id() const { return cluster_id_; }
+
 private:
+    friend class BgpNeighborConfigTest;
+
     void SetSessionAttributes(const std::string &localname, 
                               const autogen::BgpSession *session);
 
     const BgpInstanceConfig *instance_;
     autogen::BgpRouterParams peer_config_;
     autogen::BgpSessionAttributes attributes_;
+    uint32_t cluster_id_;
     static AddressFamilyList default_addr_family_list_;
     std::string name_;
     std::string uuid_;

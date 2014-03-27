@@ -294,6 +294,9 @@ rtarget_peer_test = env.UnitTest('rtarget_peer_test',
 env.Alias('src/bgp:rtarget_peer_test', rtarget_peer_test)
 
 
+bgp_rr_test = env.UnitTest('bgp_rr_test', ['bgp_rr_test.cc'])
+env.Alias('controller:bgp:bgp_rr_test', bgp_rr_test)
+
 # All Tests
 test_suite = [
     bgp_attr_test,

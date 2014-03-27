@@ -198,17 +198,94 @@ std::string BgpAttrSourceRd::ToString() const {
     return source_rd.ToString();
 }
 
+BgpAttrOriginatorId::BgpAttrOriginatorId()
+        : BgpAttribute(OriginatorId, kFlags), originator_id(0) {
+}
+
+BgpAttrOriginatorId::BgpAttrOriginatorId(const BgpAttribute &rhs)
+        : BgpAttribute(rhs), originator_id(0) {
+}
+
+int BgpAttrOriginatorId::CompareTo(const BgpAttribute &rhs_attr) const {
+    int result = BgpAttribute::CompareTo(rhs_attr);
+    if (result != 0) {
+        return result;
+    }
+    const BgpAttrOriginatorId &rhs =
+            static_cast<const BgpAttrOriginatorId &>(rhs_attr);
+    KEY_COMPARE(originator_id, rhs.originator_id);
+    return 0;
+}
+
+void BgpAttrOriginatorId::ToCanonical(BgpAttr *attr) {
+    attr->set_originator_id(originator_id);
+}
+
+std::string BgpAttrOriginatorId::ToString() const {
+    char repr[80];
+    snprintf(repr, sizeof(repr), "ORIGINATOR_ID <code: %d, flags: %02x> : %04x",
+             code, flags, originator_id);
+    return std::string(repr);
+}
+
+BgpAttrClusterList::BgpAttrClusterList()
+        : BgpAttribute(ClusterList, kFlags) {
+}
+
+BgpAttrClusterList::BgpAttrClusterList(const BgpAttribute &rhs)
+        : BgpAttribute(rhs) {
+}
+
+int BgpAttrClusterList::CompareTo(const BgpAttribute &rhs_attr) const {
+    int result = BgpAttribute::CompareTo(rhs_attr);
+    if (result != 0) {
+        return result;
+    }
+    const BgpAttrClusterList &rhs =
+            static_cast<const BgpAttrClusterList &>(rhs_attr);
+    std::vector<uint32_t>::const_iterator cl1 = cluster_list.begin();
+    std::vector<uint32_t>::const_iterator cl2 = rhs.cluster_list.begin();
+    for (; cl1 != cluster_list.end() && cl2 != rhs.cluster_list.end();
+         ++cl1, ++cl2) {
+        KEY_COMPARE(*cl1, *cl2);
+    }
+    if (cl1 != cluster_list.end()) {
+        return 1;
+    }
+    if (cl2 != rhs.cluster_list.end()) {
+        return -1;
+    }
+    return 0;
+}
+
+void BgpAttrClusterList::ToCanonical(BgpAttr *attr) {
+    attr->set_cluster_list(cluster_list);
+}
+
+std::string BgpAttrClusterList::ToString() const {
+    std::stringstream repr;
+    repr << "CLUSTER_LIST <code: " << (int) code;
+    repr << ", flags: " << std::hex << (int) flags << "> :";
+    for (std::vector<uint32_t>::const_iterator iter = cluster_list.begin();
+         iter != cluster_list.end(); ++iter) {
+        repr << " " << Ip4Address(*iter).to_string();
+    }
+    repr << std::endl;
+    return repr.str();
+}
+
 BgpAttr::BgpAttr()
     : origin_(BgpAttrOrigin::INCOMPLETE), nexthop_(),
       med_(0), local_pref_(0), atomic_aggregate_(false),
-      aggregator_as_num_(0), aggregator_address_() {
+      aggregator_as_num_(0), aggregator_address_(),
+      originator_id_(0) {
     refcount_ = 0;
 }
 
 BgpAttr::BgpAttr(BgpAttrDB *attr_db)
     : attr_db_(attr_db), origin_(BgpAttrOrigin::INCOMPLETE),
       nexthop_(), med_(0), local_pref_(0), atomic_aggregate_(false),
-      aggregator_as_num_(0), aggregator_address_() {
+      aggregator_as_num_(0), aggregator_address_(), originator_id_(0) {
     refcount_ = 0;
 }
 
@@ -217,7 +294,7 @@ BgpAttr::BgpAttr(BgpAttrDB *attr_db, const BgpAttrSpec &spec)
       nexthop_(), med_(0),
       local_pref_(BgpAttrLocalPref::kDefault),
       atomic_aggregate_(false),
-      aggregator_as_num_(0), aggregator_address_() {
+      aggregator_as_num_(0), aggregator_address_(), originator_id_(0) {
     refcount_ = 0;
     for (std::vector<BgpAttribute *>::const_iterator it = spec.begin();
          it < spec.end(); it++) {
@@ -279,6 +356,23 @@ uint32_t BgpAttr::neighbor_as() const {
     return 0;
 }
 
+void BgpAttr::ClusterListAppend(uint32_t cluster_id) {
+    cluster_list_.push_back(cluster_id);
+}
+
+/*
+ * Return true if the cluster list contains the specified id.
+ */
+bool BgpAttr::ClusterListContains(uint32_t cluster_id) const {
+    for (std::vector<uint32_t>::const_iterator iter = cluster_list_.begin();
+         iter != cluster_list_.end(); ++iter) {
+        if ((*iter) == cluster_id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void BgpAttr::Remove() {
     attr_db_->Delete(this);
 }
@@ -294,6 +388,7 @@ int BgpAttr::CompareTo(const BgpAttr &rhs) const {
     KEY_COMPARE(source_rd_, rhs.source_rd_);
     KEY_COMPARE(label_block_.get(), rhs.label_block_.get());
     KEY_COMPARE(olist_.get(), rhs.olist_.get());
+    KEY_COMPARE(originator_id_, rhs.originator_id_);
 
     if (as_path_.get() == NULL || rhs.as_path_.get() == NULL) {
         KEY_COMPARE(as_path_.get(), rhs.as_path_.get());
@@ -316,6 +411,19 @@ int BgpAttr::CompareTo(const BgpAttr &rhs) const {
         if (ret != 0) return ret;
     }
 
+    std::vector<uint32_t>::const_iterator cl1 = cluster_list_.begin();
+    std::vector<uint32_t>::const_iterator cl2 = rhs.cluster_list_.begin();
+    for (; cl1 != cluster_list_.end() && cl2 != rhs.cluster_list_.end();
+         ++cl1, ++cl2) {
+        KEY_COMPARE(*cl1, *cl2);
+    }
+    if (cl1 != cluster_list_.end()) {
+        return 1;
+    }
+    if (cl2 != rhs.cluster_list_.end()) {
+        return -1;
+    }
+
     return 0;
 }
 
@@ -330,6 +438,7 @@ std::size_t hash_value(BgpAttr const &attr) {
     boost::hash_combine(hash, attr.aggregator_as_num_);
     boost::hash_combine(hash, attr.aggregator_address_.to_string());
     boost::hash_combine(hash, attr.source_rd_.ToString());
+    boost::hash_combine(hash, attr.originator_id_);
 
     if (attr.label_block_) {
         boost::hash_combine(hash, attr.label_block_->first());
@@ -345,6 +454,8 @@ std::size_t hash_value(BgpAttr const &attr) {
     if (attr.community_) boost::hash_combine(hash, *attr.community_);
     if (attr.ext_community_) boost::hash_combine(hash, *attr.ext_community_);
 
+    boost::hash_range(hash, attr.cluster_list_.begin(),
+                      attr.cluster_list_.end());
     return hash;
 }
 

@@ -116,6 +116,66 @@ void BgpTable::RibOutDelete(const RibExportPolicy &policy) {
     ribout_map_.erase(loc);
 }
 
+/*
+ * BgpShouldReflect
+ *
+ * Returns whether the route should be reflected between iBGP
+ * peers. Both ribout and ipeer are guaranteed to be iBGP.
+ *
+ * @param[in] ribout RIB-Out to which the route is being advertised.
+ * @param[in] attr   Attributes of the path being advertised
+ * @param[in] ipeer  Peer that advertised us the route.
+ */
+static bool BgpShouldReflect(const RibOut *ribout, const BgpAttr *attr,
+                             const IPeer *ipeer) {
+    const BgpPeer *peer = static_cast<const BgpPeer *>(ipeer);
+    uint32_t origin_id = peer->cluster_id();
+    if (origin_id != 0) {
+        if (attr->ClusterListContains(origin_id)) {
+            return false;
+        }
+        return true;
+    }
+
+    uint32_t cluster_id = ribout->ExportPolicy().cluster_id;
+    if (cluster_id != 0) {
+        if (attr->ClusterListContains(cluster_id)) {
+            return false;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+/*
+ * BgpReflectPathAttributes
+ *
+ * Adjust the path attributes (ORIGINATOR_ID and CLUSTER_LIST) for a route
+ * that is being reflected.
+ *
+ * @param[in] ribout RIB-Out to which the route is being advertised.
+ * @param[in] ipeer  Peer that advertised us the route.
+ * @param[out] attr  Attributes of the RIB-Out route.
+ */
+
+static void BgpReflectPathAttributes(const RibOut *ribout, const IPeer *ipeer,
+                                     BgpAttr *attr) {
+    const BgpPeer *peer = static_cast<const BgpPeer *>(ipeer);
+    uint32_t origin_id = peer->cluster_id();
+    if (origin_id != 0) {
+        if (attr->originator_id() == 0) {
+            attr->set_originator_id(peer->bgp_identifier());
+        }
+        attr->ClusterListAppend(origin_id);
+    }
+
+    uint32_t cluster_id = ribout->ExportPolicy().cluster_id;
+    if (cluster_id != 0 && cluster_id != origin_id) {
+        attr->ClusterListAppend(cluster_id);
+    }
+}
+
 UpdateInfo *BgpTable::GetUpdateInfo(RibOut *ribout, BgpRoute *route,
         const RibPeerSet &peerset) {
     const BgpPath *path = route->BestPath();
@@ -164,8 +224,13 @@ UpdateInfo *BgpTable::GetUpdateInfo(RibOut *ribout, BgpRoute *route,
 
             // Split horizon check.
             const IPeer *peer = path->GetPeer();
-            if (peer && peer->PeerType() == BgpProto::IBGP)
-                return NULL;
+            bool reflecting = false;
+            if (peer && peer->PeerType() == BgpProto::IBGP) {
+                if (!BgpShouldReflect(ribout, attr, peer)) {
+                    return NULL;
+                }
+                reflecting = true;
+            }
 
             BgpAttr *clone = new BgpAttr(*attr);
 
@@ -180,6 +245,10 @@ UpdateInfo *BgpTable::GetUpdateInfo(RibOut *ribout, BgpRoute *route,
             if (attr->as_path() == NULL) {
                 AsPathSpec as_path;
                 clone->set_as_path(&as_path);
+            }
+
+            if (reflecting) {
+                BgpReflectPathAttributes(ribout, peer, clone);
             }
 
             attr_ptr = attr->attr_db()->Locate(clone);

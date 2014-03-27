@@ -193,6 +193,8 @@ public:
     bool IsControlNode() const { return control_node_; }
     void RegisterToVpnTables(bool established);
 
+    uint32_t cluster_id() const;
+
 private:
     friend class BgpConfigTest;
     friend class BgpPeerTest;

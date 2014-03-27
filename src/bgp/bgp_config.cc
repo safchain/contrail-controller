@@ -267,7 +267,7 @@ BgpNeighborConfig::BgpNeighborConfig(const BgpInstanceConfig *instance,
                                      const string &local_name,
                                      const autogen::BgpRouter *router,
                                      const autogen::BgpSession *session)
-        : instance_(instance) {
+        : instance_(instance), cluster_id_(0) {
 
     // If the autogen::BgpSession has a uuid, we append it to the remote
     // bgp-router's name to make the BgpNeighborConfig's name unique.
