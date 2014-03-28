@@ -59,6 +59,18 @@ void BgpMessage::StartReach(const RibOutAttr *roattr, const BgpRoute *route) {
         update.path_attributes.push_back(comm);
     }
 
+    if (attr->originator_id() != 0) {
+        BgpAttrOriginatorId *attr_oid = new BgpAttrOriginatorId();
+        attr_oid->originator_id = attr->originator_id();
+        update.path_attributes.push_back(attr_oid);
+    }
+
+    if (attr->cluster_list().size()) {
+        BgpAttrClusterList *attr_clist = new BgpAttrClusterList();
+        attr_clist->cluster_list = attr->cluster_list();
+        update.path_attributes.push_back(attr_clist);
+    }
+
     if (attr->ext_community() && attr->ext_community()->communities().size()) {
         ExtCommunitySpec *ext_comm = new ExtCommunitySpec;
         const ExtCommunity::ExtCommunityList &v =

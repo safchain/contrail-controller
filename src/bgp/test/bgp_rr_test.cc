@@ -504,11 +504,21 @@ TEST_F(BgpReflectorTest, ReflectClientRoute) {
     const BgpAttr *attr1 = ExpectRoute(client2, "10.0.0.0", 24);
     EXPECT_TRUE(attr1 != NULL);
     // MUST have originator-id and cluster list
+    if (attr1 != NULL) {
+        EXPECT_EQ(0x00000003ul, attr1->originator_id());
+        EXPECT_EQ(1, attr1->cluster_list().size());
+        if (attr1->cluster_list().size() > 0) {
+            EXPECT_EQ(0x00000001ul, attr1->cluster_list()[0]);
+        }
+    }
 
     BgpServerTest *peer = ServerFind("meshpeer");
     const BgpAttr *attr2 = ExpectRoute(peer, "10.0.0.0", 24);
     EXPECT_TRUE(attr2 != NULL);
-    // MUST have originator-id but not cluster list
+    // MUST have originator-id
+    if (attr2 != NULL) {
+        EXPECT_EQ(0x00000003ul, attr2->originator_id());
+    }
 
     DeleteRoute(client1, "10.0.0.0", 24);
 }

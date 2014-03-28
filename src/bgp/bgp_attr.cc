@@ -311,7 +311,8 @@ BgpAttr::BgpAttr(const BgpAttr &rhs)
       source_rd_(rhs.source_rd_),
       as_path_(rhs.as_path_), community_(rhs.community_),
       ext_community_(rhs.ext_community_),
-      label_block_(rhs.label_block_), olist_(rhs.olist_) {
+      label_block_(rhs.label_block_), olist_(rhs.olist_),
+      originator_id_(rhs.originator_id_), cluster_list_(rhs.cluster_list_) {
     refcount_ = 0; 
 }
 
