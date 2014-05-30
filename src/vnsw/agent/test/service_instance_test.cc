@@ -9,6 +9,7 @@
 #include "schema/vnc_cfg_types.h"
 #include "testing/gunit.h"
 
+#include "base/test/task_test_util.h"
 #include "cfg/cfg_init.h"
 #include "oper/operdb_init.h"
 
@@ -40,6 +41,10 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         config_ = doc_.append_child("config");
     }
 
+    void TearDown() {
+        agent_->oper_db()->Shutdown();
+    }
+
     void EncodeNode(pugi::xml_node *parent, const std::string &obj_typename,
                     const std::string &obj_name, const IFMapObject *object) {
         pugi::xml_node node = parent->append_child("node");
@@ -50,6 +55,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
 
     void EncodeServiceInstance(const uuid &uuid) {
         autogen::IdPermsType id;
+        id.Clear();
         UuidTypeSet(uuid, &id.uuid);
         autogen::ServiceInstance svc_instance;
         svc_instance.SetProperty("id-perms", &id);
@@ -71,6 +77,7 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
     EncodeServiceInstance(svc_id);
     IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
     parser->ConfigParse(config_, 1);
+    task_util::WaitForIdle();
 }
 
 static void SetUp() {

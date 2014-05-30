@@ -16,9 +16,10 @@ lib = env.Library('ifmap_test', lib_srcs)
 lib = env.Library('control_node_mock', 'control_node_mock.cc');
 
 # test specific modifications
-env.Append(LIBPATH = env['TOP'] + '/vnsw/agent/test')
+env.Append(LIBPATH = [env['TOP'] + '/vnsw/agent/test',
+                      env['TOP'] + '/base/test'])
 env.Prepend(CPPPATH = env['TOP'] + '/vnsw/agent/test')
-env.Prepend(LIBS=['gunit', 'ifmap_test', 'control_node_mock'])
+env.Prepend(LIBS=['gunit', 'ifmap_test', 'control_node_mock', 'task_test'])
 
 cflags = env['CCFLAGS']
 cflags.append(['-Wno-return-type', '-Wno-unused-function'])
