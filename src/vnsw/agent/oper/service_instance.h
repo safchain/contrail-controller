@@ -8,6 +8,19 @@
 #include <boost/uuid/uuid.hpp>
 #include "cmn/agent_db.h"
 
+class ServiceInstanceKey : public AgentKey {
+  public:
+    ServiceInstanceKey(boost::uuids::uuid uuid) {
+        uuid_ = uuid;
+    }
+    const boost::uuids::uuid &instance_id() const {
+        return uuid_;
+    }
+
+  private:
+    boost::uuids::uuid uuid_;
+};
+
 class ServiceInstance : public AgentRefCount<ServiceInstance>,
     public AgentDBEntry {
 public:
