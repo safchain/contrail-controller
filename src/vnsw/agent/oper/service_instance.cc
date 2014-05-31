@@ -8,19 +8,6 @@
 
 using boost::uuids::uuid;
 
-class ServiceInstanceKey : public AgentKey {
-  public:
-    ServiceInstanceKey(uuid uuid) {
-        uuid_ = uuid;
-    }
-    const uuid &instance_id() const {
-        return uuid_;
-    }
-
-  private:
-    uuid uuid_;
-};
-
 class ServiceInstanceData : public AgentData {
   public:
     ServiceInstanceData(const autogen::ServiceInstanceType &data) :

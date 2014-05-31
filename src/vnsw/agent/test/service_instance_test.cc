@@ -19,10 +19,12 @@ static void UuidTypeSet(const uuid &uuid, autogen::UuidType *idpair) {
     idpair->uuid_lslong = 0;
     idpair->uuid_mslong = 0;
     for (int i = 0; i < 8; i++) {
-        idpair->uuid_lslong += uuid.data[16 - (i + 1)] << (8 * i);
+        uint64_t value = uuid.data[16 - (i + 1)];
+        idpair->uuid_lslong |= value << (8 * i);
     }
     for (int i = 0; i < 8; i++) {
-        idpair->uuid_mslong += uuid.data[8 - (i + 1)] << (8 * i);
+        uint64_t value = uuid.data[8 - (i + 1)];
+        idpair->uuid_mslong |= value << (8 * i);
     }
 }
 
@@ -78,6 +80,14 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
     IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
+
+    ServiceInstanceTable *si_table = agent_->service_instance_table();
+    EXPECT_EQ(1, si_table->Size());
+
+    ServiceInstanceKey key(svc_id);
+    ServiceInstance *svc_instance =
+            static_cast<ServiceInstance *>(si_table->Find(&key, true));
+    ASSERT_TRUE(svc_instance != NULL);
 }
 
 static void SetUp() {
