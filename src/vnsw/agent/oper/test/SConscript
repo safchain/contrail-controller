@@ -19,6 +19,14 @@ test_inet_interface = AgentEnv.MakeTestCmd(env, 'test_inet_interface',
 test_fabric_interface = AgentEnv.MakeTestCmd(env, 'test_fabric_interface',
                                              oper_test_suite)
 
+ifmap_dependency_manager_test = env.UnitTest(
+        'ifmap_dependency_manager_test',
+        ['ifmap_dependency_manager_test.cc'])
+
+env.Alias('agent:ifmap_dependency_manager_test',
+          ifmap_dependency_manager_test)
+oper_test_suite.append(ifmap_dependency_manager_test)
+
 test = env.TestSuite('agent-test', oper_test_suite)
 env.Alias('agent:oper', test)
 Return('oper_test_suite')
