@@ -43,8 +43,6 @@ public:
      // Allocate an IFMapNode.
     virtual std::auto_ptr<DBEntry> AllocEntry(const DBRequestKey *key) const;
     
-    // Allocate an IFMapObject 
-    virtual IFMapObject *AllocObject() = 0;
     static IFMapNode *TableEntryLookup(DB *db, RequestKey *key);
     void NotifyNode(IFMapNode *node);
     DBGraph *GetGraph() const {return graph_;};
