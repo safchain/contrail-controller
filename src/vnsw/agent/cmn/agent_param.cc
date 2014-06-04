@@ -414,7 +414,7 @@ void AgentParam::ParseHeadlessModeArguments
 
 void AgentParam::ParseServiceInstanceArguments
     (const boost::program_options::variables_map &var_map) {
-    GetOptValue<string>(var_map, si_netns_command_, "SERVICE-INSTANCE.netns_namespace");
+    GetOptValue<string>(var_map, si_netns_command_, "SERVICE-INSTANCE.netns_command");
 }
 
 // Initialize hypervisor mode based on system information
