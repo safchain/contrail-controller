@@ -5,6 +5,7 @@
 #ifndef __AGENT_OPER_SERVICE_INSTANCE_H__
 #define __AGENT_OPER_SERVICE_INSTANCE_H__
 
+#include <map>
 #include <boost/uuid/uuid.hpp>
 #include "cmn/agent_db.h"
 

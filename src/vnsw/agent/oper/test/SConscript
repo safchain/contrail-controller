@@ -14,6 +14,21 @@ env.Append(LIBPATH = MapBuildDir(['agent/test']))
 env.Prepend(CPPPATH = env['TOP'] + '/vnsw/agent/test')
 env.Prepend(LIBS=['gunit'])
 
+env.Append(LIBPATH = [
+        env['TOP'] + '/base/test',
+        env['TOP'] + '/db/test',
+        env['TOP'] + '/ifmap',
+        env['TOP'] + '/ifmap/test',
+        ])
+
+env.Append(LIBS = [
+        'task_test',
+        'dbtest',
+        'ifmap_test_util',
+        'ifmap_test_util_agent',
+        'ifmap_common',
+        ])
+
 cflags = env['CCFLAGS']
 cflags.append(['-Wno-return-type', '-Wno-unused-function'])
 if '-fno-exceptions' in cflags:
@@ -39,6 +54,13 @@ if sys.platform != 'darwin':
     env.Alias('agent:test_inet_interface', test_inet_interface)
     test_fabric_interface = env.Program(target = 'test_fabric_interface', source = ['test_fabric_interface.cc'])
     env.Alias('agent:test_fabric_interface', test_fabric_interface)
+
+    ifmap_dependency_manager_test = env.UnitTest(
+        'ifmap_dependency_manager_test',
+        ['ifmap_dependency_manager_test.cc'])
+
+    env.Alias('agent:ifmap_dependency_manager_test',
+              ifmap_dependency_manager_test)
     oper_test_suite = [
                        test_fabric_interface,
                        test_inet_interface,
