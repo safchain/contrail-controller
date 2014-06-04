@@ -180,7 +180,7 @@ IFMapDependencyManager::IFMapNodeGet(IFMapNode *node) {
     const string &id_typename = table->Typename();
     TableMap::const_iterator loc = table_map_.find(id_typename);
     if (loc == table_map_.end()) {
-        return false;
+        return NULL;
     }
     IFMapNodeState *state =
             static_cast<IFMapNodeState *>(node->GetState(table, loc->second));
