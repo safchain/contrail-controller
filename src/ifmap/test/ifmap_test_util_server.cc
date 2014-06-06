@@ -24,6 +24,27 @@ void IFMapLinkCommon(DBRequest *request,
     data->origin.set_origin(IFMapOrigin::MAP_SERVER);
 }
 
+void IFMapMsgLink(DB *db, const string &ltype, const string &lid,
+                  const string &rtype, const string &rid,
+                  const string &metadata, uint64_t sequence_number) {
+    auto_ptr<DBRequest> request(new DBRequest());
+    request->oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+    IFMapLinkCommon(request.get(), ltype, lid, rtype, rid, metadata,
+                    sequence_number);
+    IFMapTable *tbl = IFMapTable::FindTable(db, ltype);
+    tbl->Enqueue(request.get());
+}
+
+void IFMapMsgUnlink(DB *db, const string &lhs, const string &lid,
+                    const string &rhs, const string &rid,
+                    const string &metadata) {
+    auto_ptr<DBRequest> request(new DBRequest());
+    request->oper = DBRequest::DB_ENTRY_DELETE;
+    IFMapLinkCommon(request.get(), lhs, lid, rhs, rid, metadata, 0);
+    IFMapTable *tbl = IFMapTable::FindTable(db, lhs);
+    tbl->Enqueue(request.get());
+}
+
 void IFMapNodeCommon(IFMapTable *table, DBRequest *request, const string &type,
                      const string &id, uint64_t sequence_number) {
     IFMapTable::RequestKey *key = new IFMapTable::RequestKey();
