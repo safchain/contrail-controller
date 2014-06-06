@@ -11,6 +11,7 @@
 #include "base/task_trigger.h"
 #include "db/db.h"
 #include "db/db_entry.h"
+#include "ifmap/ifmap_agent_table.h"
 #include "ifmap/ifmap_dependency_tracker.h"
 #include "ifmap/ifmap_link.h"
 #include "ifmap/ifmap_node.h"
@@ -88,7 +89,7 @@ void IFMapDependencyManager::Initialize() {
 
     // Link table
     DBTable *link_table = static_cast<DBTable *>(
-        database_->FindTable("__ifmap_metadata__.0"));
+        database_->FindTable(IFMAP_AGENT_LINK_DB_NAME));
     assert(link_table != NULL);
 
     DBTable::ListenerId id = link_table->Register(
@@ -126,6 +127,15 @@ void IFMapDependencyManager::Initialize() {
     ReactionMap react_vmi = map_list_of<string, PropagateList>
             ("self", list_of("virtual-machine-virtual-machine-interface"));
     policy->insert(make_pair("virtual-machine-interface", react_vmi));
+}
+
+void IFMapDependencyManager::Terminate() {
+    for (TableMap::iterator iter = table_map_.begin();
+         iter != table_map_.end(); ++iter) {
+        DBTable *table = static_cast<DBTable *>(
+            database_->FindTable(iter->first));
+        table->Unregister(iter->second);
+    }
 }
 
 bool IFMapDependencyManager::ProcessChangeList() {
@@ -177,8 +187,7 @@ void IFMapDependencyManager::ChangeListAdd(IFMapNode *node) {
 IFMapDependencyManager::IFMapNodeState *
 IFMapDependencyManager::IFMapNodeGet(IFMapNode *node) {
     IFMapTable *table = node->table();
-    const string &id_typename = table->Typename();
-    TableMap::const_iterator loc = table_map_.find(id_typename);
+    TableMap::const_iterator loc = table_map_.find(table->name());
     if (loc == table_map_.end()) {
         return NULL;
     }
@@ -189,8 +198,7 @@ IFMapDependencyManager::IFMapNodeGet(IFMapNode *node) {
 
 void IFMapDependencyManager::IFMapNodeSet(IFMapNode *node, DBEntry *entry) {
     IFMapTable *table = node->table();
-    const string &id_typename = table->Typename();
-    TableMap::const_iterator loc = table_map_.find(id_typename);
+    TableMap::const_iterator loc = table_map_.find(table->name());
     assert(loc != table_map_.end());
     IFMapNodeState *state = new IFMapNodeState(this, node);
     state->set_object(entry);
@@ -199,8 +207,7 @@ void IFMapDependencyManager::IFMapNodeSet(IFMapNode *node, DBEntry *entry) {
 
 void IFMapDependencyManager::IFMapNodeReset(IFMapNode *node) {
     IFMapTable *table = node->table();
-    const string &id_typename = table->Typename();
-    TableMap::const_iterator loc = table_map_.find(id_typename);
+    TableMap::const_iterator loc = table_map_.find(table->name());
     assert(loc != table_map_.end());
     node->ClearState(node->table(), loc->second);
 }

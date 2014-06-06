@@ -10,7 +10,7 @@
 #include "db/db.h"
 #include "db/db_graph.h"
 #include "db/test/db_test_util.h"
-#include "ifmap/ifmap_link_table.h"
+#include "ifmap/ifmap_agent_table.h"
 #include "ifmap/ifmap_table.h"
 #include "ifmap/test/ifmap_test_util.h"
 #include "schema/vnc_cfg_types.h"
@@ -88,11 +88,17 @@ class IFMapDependencyManagerTest : public ::testing::Test {
         DB::RegisterFactory("db.test.0", &TestTable::CreateTable);
         test_table_ = static_cast<TestTable *>(
             database_.CreateTable("db.test.0"));
-        IFMapLinkTable_Init(&database_, &graph_);
+        IFMapAgentLinkTable_Init(&database_, &graph_);
         vnc_cfg_Agent_ModuleInit(&database_, &graph_);
         manager_->Initialize();
     }
+
     virtual void TearDown() {
+        manager_->Terminate();
+        IFMapLinkTable *link_table = static_cast<IFMapLinkTable *>(
+            database_.FindTable(IFMAP_AGENT_LINK_DB_NAME));
+        assert(link_table);
+        link_table->Clear();
         db_util::Clear(&database_);
     }
 
@@ -111,7 +117,7 @@ class IFMapDependencyManagerTest : public ::testing::Test {
         AddObject(id_name);
         task_util::WaitForIdle();
         TestEntry::TestEntryKey key(id_name);
-        DBEntry *entry = table->Find(&key);
+        DBEntry *entry = test_table_->Find(&key);
         ASSERT_TRUE(entry != NULL);
         manager_->SetObject(node, entry);
     }
