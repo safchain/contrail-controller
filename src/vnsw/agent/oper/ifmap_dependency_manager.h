@@ -31,6 +31,11 @@ public:
     void Initialize();
 
     /*
+     * Unregister from all tables.
+     */
+    void Terminate();
+
+    /*
      * Associate an IFMapNode with an object in the operational database.
      */
     void SetObject(IFMapNode *node, DBEntry *entry);
