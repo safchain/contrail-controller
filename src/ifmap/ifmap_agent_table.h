@@ -63,6 +63,7 @@ public:
     struct RequestKey : DBRequestKey {
         IFMapTable::RequestKey left_key;
         IFMapTable::RequestKey right_key;
+        std::string metadata;
     };
 
     class comp {
@@ -94,7 +95,8 @@ public:
     void LinkDefAdd(DBRequest *request);
 private:
     void AddLink(DBGraphBase::edge_descriptor edge,
-                                   IFMapNode *left, IFMapNode *right, uint64_t seq);
+                 IFMapNode *left, IFMapNode *right,
+                 const std::string &metadata, uint64_t seq);
     DBGraph *graph_; 
     LinkDefMap link_def_map_;
 };
