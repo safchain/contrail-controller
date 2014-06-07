@@ -14,6 +14,7 @@
 
 #include <cmn/agent_cmn.h>
 
+#include "base/test/task_test_util.h"
 #include "cfg/cfg_init.h"
 #include "cfg/cfg_interface.h"
 #include "oper/operdb_init.h"
@@ -84,11 +85,17 @@ private:
 
 class AgentIFMapXmppUnitTest : public ::testing::Test { 
 protected:
+    AgentIFMapXmppUnitTest()
+            : thread_(NULL), sconnection(NULL) {
+    }
+
+    ~AgentIFMapXmppUnitTest() {
+    }
     virtual void SetUp() {
         Agent::GetInstance()->SetEventManager(&evm_);
-        thread_ = new ServerThread(Agent::GetInstance()->GetEventManager());
+        thread_.reset(new ServerThread(&evm_));
         RouterIdDepInit(Agent::GetInstance());
-        xs.reset(new XmppServer(Agent::GetInstance()->GetEventManager(), XmppInit::kControlNodeJID));
+        xs.reset(new XmppServer(&evm_, XmppInit::kControlNodeJID));
 
         xs->Initialize(XMPP_SERVER_PORT, false);
         thread_->Start();
@@ -150,7 +157,10 @@ protected:
         str += "/";
         str += XmppInit::kConfigPeer;
         msg.append_attribute("from") = str.c_str();
-        msg.append_attribute("to") = (XmppInit::kFqnPrependAgentNodeJID +  boost::asio::ip::host_name()).c_str(); 
+        string service(boost::asio::ip::host_name());
+        service.append("/");
+        service += XmppInit::kConfigPeer;
+        msg.append_attribute("to") = service.c_str(); 
 
         xml_node node = msg.append_child("config");
         if (update == true) {
@@ -160,7 +170,12 @@ protected:
         }
     }
 
-    void BuildCfgLinkMessage(xml_node &node, string type1, string name1, string type2, string name2) {
+    void BuildCfgLinkMessage(xml_node &node,
+                             const string &type1,
+                             const string &name1,
+                             const string &type2,
+                             const string &name2,
+                             const string &metadata) {
 
         xml_node link = node.append_child("link");
         xml_node tmp = link.append_child("node");
@@ -170,6 +185,11 @@ protected:
         tmp = link.append_child("node");
         tmp.append_attribute("type") = type2.c_str();
         tmp.append_child("name").text().set(name2.c_str());
+
+        if (metadata.size()) {
+            xml_node metadata_node = link.append_child("metadata");
+            metadata_node.append_attribute("type") = metadata.c_str();
+        }
     }
 
     void BuildCfgNodeMessage(xml_node &node, string type, string name, int uuid, IFMapIdentifier *cfg) {
@@ -179,6 +199,7 @@ protected:
         tmp.append_child("name").text().set(name.c_str());
 
         autogen::IdPermsType id;
+        id.Clear();
         id.uuid.uuid_mslong = 0;
         id.uuid.uuid_lslong = uuid;
 
@@ -188,22 +209,18 @@ protected:
 
     void XmppConnectionSetUp() {
         // server connection
-        WAIT_FOR(100, 10000,
-            ((sconnection = xs->FindConnection(XmppInit::kFqnPrependAgentNodeJID + 
-              boost::asio::ip::host_name())) != NULL));
-
-        //Create control-node bgp mock peer 
-        mock_ifmap_peer.reset(new ControlNodeMockIFMapXmppPeer(sconnection->ChannelMux()));
+        const std::string &hostname = boost::asio::ip::host_name();
+        TASK_UTIL_EXPECT_TRUE(
+            (sconnection = xs->FindConnection(hostname)) != NULL);
+        // Create control-node bgp mock peer 
+        mock_ifmap_peer.reset(
+            new ControlNodeMockIFMapXmppPeer(sconnection->ChannelMux()));
     }
 
     EventManager evm_;
 
-    ServerThread *thread_;
-
-    XmppConfigData *xmpps_cfg;
-
+    auto_ptr<ServerThread> thread_;
     auto_ptr<XmppServer> xs;
-
     XmppConnection *sconnection;
 
     auto_ptr<ControlNodeMockIFMapXmppPeer> mock_ifmap_peer;
@@ -229,7 +246,10 @@ TEST_F(AgentIFMapXmppUnitTest, vntest) {
     IFMapTable::RequestKey *req_key = new IFMapTable::RequestKey;
     req_key->id_type = "virtual-network";
     req_key->id_name = "vn1";
-    WAIT_FOR(100, 10000, ((node = IFMapAgentTable::TableEntryLookup(Agent::GetInstance()->GetDB(), req_key)) != NULL));
+    TASK_UTIL_EXPECT_TRUE(
+        ((node = IFMapAgentTable::TableEntryLookup(
+            Agent::GetInstance()->GetDB(), req_key)) != NULL));
+
     EXPECT_EQ(node->name(), "vn1");
 
     //Lookup in oper db
@@ -287,11 +307,17 @@ TEST_F(AgentIFMapXmppUnitTest, vn_vm_vrf_test) {
     BuildCfgNodeMessage(xitems,"virtual-machine-interface", "vnet4", 4, static_cast <IFMapIdentifier *> (vmi));
 
     //vn-ri link
-    BuildCfgLinkMessage(xitems, "virtual-network", "vn1", "routing-instance", "vrf2");
+    BuildCfgLinkMessage(xitems, "virtual-network", "vn1",
+                        "routing-instance", "vrf2",
+                        "virtual-network-routing-instance");
     //vm-vmi link
-    BuildCfgLinkMessage(xitems, "virtual-machine", "vm3", "virtual-machine-interface", "vnet4");
+    BuildCfgLinkMessage(xitems, "virtual-machine", "vm3",
+                        "virtual-machine-interface", "vnet4",
+                        "virtual-machine-virtual-machine-interface");
     //vn-vmi link
-    BuildCfgLinkMessage(xitems, "virtual-network", "vn1", "virtual-machine-interface", "vnet4");
+    BuildCfgLinkMessage(xitems, "virtual-network", "vn1",
+                        "virtual-machine-interface", "vnet4",
+                        "virtual-machine-virtual-machine-interface");
 
     NovaIntfAdd(4, "vnet4", "1.1.1.1", "00:00:00:00:00:11");
     //Send the iq message
@@ -338,7 +364,9 @@ TEST_F(AgentIFMapXmppUnitTest, vn_vm_vrf_test) {
     xml_document doc;
     xitems = MessageHeader(&doc, false);
     //vn-ri link
-    BuildCfgLinkMessage(xitems, "virtual-network", "vn1", "routing-instance", "vrf2");
+    BuildCfgLinkMessage(xitems, "virtual-network", "vn1",
+                        "routing-instance", "vrf2",
+                        "virtual-network-routing-instance");
     SendDocument(doc, mock_ifmap_peer.get());
     client->WaitForIdle();
 

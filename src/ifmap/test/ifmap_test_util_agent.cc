@@ -24,6 +24,7 @@ void IFMapLinkCommon(DBRequest *request,
     key->right_key.id_name = rid;
     key->right_key.id_type = rhs;
     key->right_key.id_seq_num = sequence_number;
+    key->metadata = metadata;
 }
 
 void IFMapMsgLink(DB *db, const string &ltype, const string &lid,
