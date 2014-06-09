@@ -148,7 +148,7 @@ TEST_F(IFMapDependencyManagerTest, VirtualMachineEvent) {
                                   "virtual-machine", "id-1",
                                   "virtual-machine-service-instance");
     task_util::WaitForIdle();
-    EXPECT_EQ(1, change_list_.size());
+    ASSERT_EQ(1, change_list_.size());
     TestEntry *entry = static_cast<TestEntry *>(change_list_.at(0));
     EXPECT_EQ("id-1", entry->name());
 }
