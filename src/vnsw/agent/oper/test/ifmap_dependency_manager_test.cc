@@ -153,6 +153,99 @@ TEST_F(IFMapDependencyManagerTest, VirtualMachineEvent) {
     EXPECT_EQ("id-1", entry->name());
 }
 
+TEST_F(IFMapDependencyManagerTest, TemplateEvent) {
+    typedef IFMapDependencyManagerTest_TemplateEvent_Test TestClass;
+    manager_->Register(
+        "service-instance",
+        boost::bind(&TestClass::ChangeEventHandler, this, _1));
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_, "service-instance", "id-1");
+    task_util::WaitForIdle();
+    CreateObject("service-instance", "id-1");
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_, "service-template", "id-1");
+    ifmap_test_util::IFMapMsgLink(&database_, "service-instance", "id-1",
+                                  "service-template", "id-1",
+                                  "service-instance-service-template");
+    task_util::WaitForIdle();
+    ASSERT_EQ(1, change_list_.size());
+    TestEntry *entry = static_cast<TestEntry *>(change_list_.at(0));
+    EXPECT_EQ("id-1", entry->name());
+}
+
+TEST_F(IFMapDependencyManagerTest, VMIEvent) {
+    typedef IFMapDependencyManagerTest_VMIEvent_Test TestClass;
+    manager_->Register(
+        "service-instance",
+        boost::bind(&TestClass::ChangeEventHandler, this, _1));
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_, "service-instance", "id-1");
+    task_util::WaitForIdle();
+    CreateObject("service-instance", "id-1");
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_, "service-instance", "id-2");
+    task_util::WaitForIdle();
+    CreateObject("service-instance", "id-2");
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_, "virtual-machine", "id-1");
+    ifmap_test_util::IFMapMsgLink(&database_, "service-instance", "id-1",
+                                  "virtual-machine", "id-1",
+                                  "virtual-machine-service-instance");
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_,
+                                     "virtual-machine-interface",
+                                     "id-1-left");
+    ifmap_test_util::IFMapMsgLink(
+        &database_,
+        "virtual-machine-interface", "id-1-left",
+        "virtual-machine", "id-1",
+        "virtual-machine-interface-virtual-machine");
+
+
+    task_util::WaitForIdle();
+    ASSERT_EQ(1, change_list_.size());
+    TestEntry *entry = static_cast<TestEntry *>(change_list_.at(0));
+    EXPECT_EQ("id-1", entry->name());
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_, "virtual-machine", "id-1");
+    ifmap_test_util::IFMapMsgLink(&database_, "service-instance", "id-1",
+                                  "virtual-machine", "id-1",
+                                  "virtual-machine-service-instance");
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_,
+                                     "virtual-machine-interface",
+                                     "id-1-right");
+    ifmap_test_util::IFMapMsgLink(
+        &database_,
+        "virtual-machine-interface", "id-1-right",
+        "virtual-machine", "id-1",
+        "virtual-machine-interface-virtual-machine");
+
+    task_util::WaitForIdle();
+    ASSERT_EQ(2, change_list_.size());
+    TestEntry *entry_2 = static_cast<TestEntry *>(change_list_.at(1));
+    EXPECT_EQ("id-1", entry_2->name());
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_, "virtual-machine", "id-2");
+    ifmap_test_util::IFMapMsgLink(&database_, "service-instance", "id-2",
+                                  "virtual-machine", "id-2",
+                                  "virtual-machine-service-instance");
+
+    ifmap_test_util::IFMapMsgNodeAdd(&database_,
+                                     "virtual-machine-interface",
+                                     "id-2-left");
+    ifmap_test_util::IFMapMsgLink(
+        &database_,
+        "virtual-machine-interface", "id-2-left",
+        "virtual-machine", "id-2",
+        "virtual-machine-interface-virtual-machine");
+
+    task_util::WaitForIdle();
+    ASSERT_EQ(3, change_list_.size());
+    TestEntry *entry_3 = static_cast<TestEntry *>(change_list_.at(2));
+    EXPECT_EQ("id-2", entry_3->name());
+}
+
 static void SetUp() {
 }
 
