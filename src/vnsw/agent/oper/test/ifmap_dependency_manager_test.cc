@@ -9,6 +9,7 @@
 #include "base/test/task_test_util.h"
 #include "db/db.h"
 #include "db/db_graph.h"
+#include "db/db_table_partition.h"
 #include "db/test/db_test_util.h"
 #include "ifmap/ifmap_agent_table.h"
 #include "ifmap/ifmap_table.h"
@@ -30,7 +31,7 @@ class TestEntry : public DBEntry {
         std::string name_;
     };
 
-    TestEntry() {
+    TestEntry() : node_(NULL) {
     }
 
     virtual std::string ToString() const {
@@ -56,8 +57,13 @@ class TestEntry : public DBEntry {
 
     const std::string  &name() const { return name_; }
 
+    IFMapNode *node() { return node_; }
+    void set_node(IFMapNode *node) { node_ = node; }
+    void reset_node() { node_ = NULL; }
+
   private:
     std::string name_;
+    IFMapNode *node_;
 };
 
 class TestTable : public DBTable {
@@ -94,6 +100,8 @@ class IFMapDependencyManagerTest : public ::testing::Test {
     }
 
     virtual void TearDown() {
+        RemoveAllObjects();
+
         manager_->Terminate();
         IFMapLinkTable *link_table = static_cast<IFMapLinkTable *>(
             database_.FindTable(IFMAP_AGENT_LINK_DB_NAME));
@@ -119,7 +127,31 @@ class IFMapDependencyManagerTest : public ::testing::Test {
         TestEntry::TestEntryKey key(id_name);
         DBEntry *entry = test_table_->Find(&key);
         ASSERT_TRUE(entry != NULL);
+        TestEntry *test_entry = static_cast<TestEntry *>(entry);
         manager_->SetObject(node, entry);
+        test_entry->set_node(node);
+    }
+
+    void RemoveAllObjects() {
+        DBTablePartition *tslice = static_cast<DBTablePartition *>(
+            test_table_->GetTablePartition(0));
+        typedef std::vector<std::string> IdList;
+        IdList list;
+
+        for (DBEntry *entry = tslice->GetFirst(); entry;
+             entry = tslice->GetNext(entry)) {
+            TestEntry *test_entry = static_cast<TestEntry *>(entry);
+            manager_->ResetObject(test_entry->node());
+            test_entry->reset_node();
+            list.push_back(test_entry->name());
+        }
+
+        for (IdList::iterator iter = list.begin(); iter != list.end(); ++iter) {
+            DBRequest request;
+            request.oper = DBRequest::DB_ENTRY_DELETE;
+            request.key.reset(new TestEntry::TestEntryKey(*iter));
+            test_table_->Enqueue(&request);
+        }
     }
 
     void ChangeEventHandler(DBEntry *entry) {
