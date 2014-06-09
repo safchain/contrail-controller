@@ -111,6 +111,8 @@ void IFMapDependencyManager::Initialize() {
     IFMapDependencyTracker::NodeEventPolicy *policy = tracker_->policy_map();
 
     ReactionMap react_si = map_list_of<string, PropagateList>
+            ("service-instance-service-template", list_of("self"))
+            ("virtual-machine-service-instance", list_of("self"))
             ("self", list_of("self"));
     policy->insert(make_pair("service-instance", react_si));
 
@@ -248,10 +250,12 @@ void IFMapDependencyManager::ResetObject(IFMapNode *node) {
  */
 void IFMapDependencyManager::Register(
     const string &type, ChangeEventHandler handler) {
+    event_map_.insert(std::make_pair(type, handler));
 }
 
 /*
  * Unregister a notification callback.
  */
 void IFMapDependencyManager::Unregister(const string &type) {
+    event_map_.erase(type);
 }
