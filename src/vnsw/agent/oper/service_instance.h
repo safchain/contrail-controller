@@ -81,6 +81,9 @@ public:
 
     const Properties &properties() const { return properties_; }
 
+    void StartNetworkNamespace(bool restart);
+    void StopNetworkNamespace();
+
 private:
     boost::uuids::uuid uuid_;
     IFMapNode *node_;
