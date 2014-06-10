@@ -35,6 +35,26 @@ public:
         NetworkNamespace,
     };
 
+    /*
+     * Properties computed from walking the ifmap graph.
+     * POD type.
+     */
+    struct Properties {
+        void Clear();
+        int CompareTo(const Properties &rhs) const;
+
+        /* template parameters */
+        int service_type;
+        int virtualization_type;
+
+        /* virtual machine */
+        boost::uuids::uuid instance_id;
+
+        /* interfaces */
+        boost::uuids::uuid vmi_inside;
+        boost::uuids::uuid vmi_outside;
+    };
+
     ServiceInstance();
     virtual bool IsLess(const DBEntry &rhs) const;
     virtual std::string ToString() const;
@@ -46,19 +66,25 @@ public:
         return AgentRefCount<ServiceInstance>::GetRefCount();
     }
 
+    /*
+     * Walk the IFMap graph and calculate the properties for this node.
+     */
+    void CalculateProperties(Properties *properties);
+
+    void set_node(IFMapNode *node) { node_ = node; }
+
+    IFMapNode *node() { return node_; }
+
+    void set_properties(const Properties &properties) {
+        properties_ = properties;
+    }
+
+    const Properties &properties() const { return properties_; }
+
 private:
     boost::uuids::uuid uuid_;
-
-    /* template parameters */
-    int service_type_;
-    int virtualization_type_;
-
-    /* virtual machine */
-    boost::uuids::uuid instance_id_;
-
-    /* interfaces */
-    boost::uuids::uuid vmi_inside_;
-    boost::uuids::uuid vmi_outside_;
+    IFMapNode *node_;
+    Properties properties_;
 
     DISALLOW_COPY_AND_ASSIGN(ServiceInstance);
 };
@@ -70,6 +96,19 @@ class ServiceInstanceTable : public AgentDBTable {
     virtual std::auto_ptr<DBEntry> AllocEntry(const DBRequestKey *key) const;
 
     /*
+     * Register with the dependency manager.
+     */
+    void Initialize(Agent *agent);
+
+    /*
+     * Add/Delete methods establish the mapping between the IFMapNode
+     * and the ServiceInstance DBEntry with the dependency manager.
+     */
+    virtual DBEntry *Add(const DBRequest *request);
+    virtual void Delete(DBEntry *entry, const DBRequest *request);
+    virtual bool OnChange(DBEntry *entry, const DBRequest *request);
+
+    /*
      * IFNodeToReq
      *
      * Convert the ifmap node to a (key,data) pair stored in the database.
@@ -79,6 +118,14 @@ class ServiceInstanceTable : public AgentDBTable {
     static DBTableBase *CreateTable(DB *db, const std::string &name);
 
  private:
+    /*
+     * Invoked by dependency manager whenever a node in the graph
+     * changes in a way that it affects the service instance
+     * configuration. The dependency tracking policy is configured in
+     * the dependency manager directly.
+     */
+    void ChangeEventHandler(DBEntry *entry);
+
     DISALLOW_COPY_AND_ASSIGN(ServiceInstanceTable);
 };
 

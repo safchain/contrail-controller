@@ -7,3 +7,6 @@
 template <>
 AgentObjectFactory *Factory<AgentObjectFactory>::singleton_ = NULL;
 
+#include "oper/ifmap_dependency_manager.h"
+FACTORY_STATIC_REGISTER(AgentObjectFactory, IFMapDependencyManager,
+                        IFMapDependencyManager);
