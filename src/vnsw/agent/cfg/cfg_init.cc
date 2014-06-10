@@ -209,6 +209,11 @@ void AgentConfig::RegisterDBClients(DB *db) {
                                "interface-route-table")));
     assert(cfg_route_table_);
 
+    cfg_service_template_table_ = (static_cast<IFMapAgentTable *>
+        (IFMapTable::FindTable(agent_->GetDB(),
+                               "service-template")));
+    assert(cfg_service_template_table_);
+
     cfg_interface_client_->Init();
 }
 
