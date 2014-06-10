@@ -5,13 +5,13 @@
 #ifndef __VNSW_OPERDB_INIT__
 #define __VNSW_OPERDB_INIT__
 
-#include <tbb/mutex.h>
-#ifndef _LIBCPP_VERSION
-#include <tbb/compat/condition_variable>
-#endif
+#include "base/util.h"
 
-class DBEntryBase;
+class Agent;
+class DB;
 class GlobalVrouter;
+class IFMapDependencyManager;
+class MulticastHandler;
 
 class OperDB {
 public:
@@ -28,6 +28,10 @@ public:
     MulticastHandler *multicast() const { return multicast_.get(); }
     GlobalVrouter *global_vrouter() const { return global_vrouter_.get(); }
 
+    IFMapDependencyManager *dependency_manager() {
+        return dependency_manager_.get();
+    }
+
 private:
     OperDB();
     static OperDB *singleton_;
@@ -35,6 +39,8 @@ private:
     Agent *agent_;
     std::auto_ptr<MulticastHandler> multicast_;
     std::auto_ptr<GlobalVrouter> global_vrouter_;
+    std::auto_ptr<IFMapDependencyManager> dependency_manager_;
+
     DISALLOW_COPY_AND_ASSIGN(OperDB);
 };
 #endif

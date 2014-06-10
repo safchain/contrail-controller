@@ -111,10 +111,10 @@ class IFMapDependencyManagerTest : public ::testing::Test {
     }
 
     void AddObject(const std::string &id_name) {
-        DBRequest request;
-        request.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-        request.key.reset(new TestEntry::TestEntryKey(id_name));
-        test_table_->Enqueue(&request);
+        std::auto_ptr<DBRequest> request(new DBRequest());
+        request->oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+        request->key.reset(new TestEntry::TestEntryKey(id_name));
+        test_table_->Enqueue(request.release());
     }
 
     void CreateObject(const std::string &id_typename,

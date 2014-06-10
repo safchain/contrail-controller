@@ -2,6 +2,8 @@
  * Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
  */
 
+#include "oper/operdb_init.h"
+
 #include <cmn/agent_cmn.h>
 #include <db/db.h>
 #include <sandesh/sandesh_types.h>
@@ -9,8 +11,9 @@
 #include <sandesh/sandesh.h>
 #include <sandesh/sandesh_trace.h>
 #include <cfg/cfg_init.h>
+#include "cmn/agent_factory.h"
 #include <oper/route_common.h>
-#include <oper/operdb_init.h>
+#include "oper/ifmap_dependency_manager.h"
 #include <oper/interface_common.h>
 #include <oper/nexthop.h>
 #include <oper/vrf.h>
@@ -125,13 +128,14 @@ void OperDB::CreateDBTables(DB *db) {
             static_cast<ServiceInstanceTable *>(
                 db->CreateTable("db.service-instance.0"));
     agent_->SetServiceInstanceTable(si_table);
-    si_table->set_agent(agent_);
+    si_table->Initialize(agent_);
 
     multicast_ = std::auto_ptr<MulticastHandler>(new MulticastHandler(agent_));
     global_vrouter_ = std::auto_ptr<GlobalVrouter> (new GlobalVrouter(this));
 }
 
 void OperDB::Init() {
+    dependency_manager_->Initialize();
 }
 
 void OperDB::CreateDBClients() {
@@ -139,7 +143,11 @@ void OperDB::CreateDBClients() {
     global_vrouter_.get()->CreateDBClients();
 }
 
-OperDB::OperDB(Agent *agent) : agent_(agent) {
+OperDB::OperDB(Agent *agent)
+        : agent_(agent),
+          dependency_manager_(
+              AgentObjectFactory::Create<IFMapDependencyManager>(
+                  agent->GetDB(), agent->cfg()->cfg_graph())) {
     assert(singleton_ == NULL);
     singleton_ = this;
 }
