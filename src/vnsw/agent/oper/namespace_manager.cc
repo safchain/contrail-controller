@@ -1,6 +1,11 @@
+/*
+ * Copyright (c) 2014 Juniper Networks, Inc. All rights reserved.
+ */
+
 #include "oper/namespace_manager.h"
 
 #include <boost/bind.hpp>
+#include <sys/wait.h>
 #include "db/db.h"
 #include "cmn/agent.h"
 #include "cmn/agent_param.h"
@@ -9,7 +14,10 @@
 NamespaceManager::NamespaceManager(Agent *agent)
         : agent_(agent),
           si_table_(NULL),
-          listener_id_(DBTableBase::kInvalidId) {
+          listener_id_(DBTableBase::kInvalidId),
+          signal_(*(agent_->GetEventManager()->io_service())),
+          errors_(*(agent_->GetEventManager()->io_service())) {
+    InitSigHandler();
 }
 
 void NamespaceManager::Initialize() {
@@ -18,40 +26,120 @@ void NamespaceManager::Initialize() {
     assert(si_table_);
     listener_id_ = si_table_->Register(
         boost::bind(&NamespaceManager::EventObserver, this, _1, _2));
+
+    netns_cmd_ = agent_->params()->si_netns_command();
+    if (netns_cmd_.length() == 0) {
+        LOG(ERROR, "Path for network namespace command not specified"
+                   "in the config file");
+    }
+}
+
+void NamespaceManager::HandleSigChild(const boost::system::error_code& error, int sig) {
+    if (!error) {
+        int status;
+        while (::waitpid(-1, &status, WNOHANG) > 0);
+        RegisterSigHandler();
+    }
+}
+
+void NamespaceManager::RegisterSigHandler() {
+    signal_.async_wait(boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2));
+}
+
+void NamespaceManager::InitSigHandler() {
+    boost::system::error_code ec;
+    signal_.add(SIGCHLD, ec);
+    if (ec) {
+        LOG(ERROR, "SIGCHLD registration failed");
+    }
+    RegisterSigHandler();
 }
 
 void NamespaceManager::Terminate() {
     si_table_->Unregister(listener_id_);
+    boost::system::error_code ec;
+    signal_.cancel(ec);
 }
 
-static void ExecCmd(std::string cmd) {
-    /*
-     * TODO(safchain) start async process
-     */
-    std::cout << "Start NetNS Script: " << cmd << std::endl;
+void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
+                      size_t read_bytes) {
+    if (read_bytes) {
+        errors_data_ << rx_buff_;
+    }
+
+    if (ec) {
+        boost::system::error_code close_ec;
+        errors_.close(close_ec);
+
+        std::string errors = errors_data_.str();
+        if (errors.length() > 0) {
+            LOG(ERROR, errors);
+        }
+        errors_data_.clear();
+    } else {
+        bzero(rx_buff_, sizeof(rx_buff_));
+        boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
+                boost::bind(&NamespaceManager::ReadErrors, this, boost::asio::placeholders::error,
+                        boost::asio::placeholders::bytes_transferred));
+    }
 }
 
-void NamespaceManager::StartNetworkNamespace(
-    const ServiceInstance *svc_instance, bool restart) {
-    std::stringstream cmd_str;
+void NamespaceManager::ExecCmd(const std::string cmd) {
+    std::vector<std::string> argv;
 
-    std::string cmd = agent_->params()->si_netns_command();
-    if (cmd.length() == 0) {
-        LOG(DEBUG, "Path for network namespace service instance not specified"
-                "in the config file");
+    argv.push_back("/bin/sh");
+    argv.push_back("-c");
+
+    boost::split(argv, cmd, boost::is_any_of(" "), boost::token_compress_on);
+
+    std::vector<char *> c_argv(argv.size() + 1);
+    for (std::size_t i = 0; i != argv.size(); ++i) {
+        argv[i] = argv[i].c_str();
+    }
+
+    int err[2];
+    if (pipe(err) < 0) {
         return;
     }
-    cmd_str << cmd;
 
-    if (restart) {
-        cmd_str << " restart ";
+    if (vfork() == 0) {
+        close(err[0]);
+        dup2(err[1], STDERR_FILENO);
+        close(err[1]);
+
+        close(STDOUT_FILENO);
+        close(STDIN_FILENO);
+
+        execvp(c_argv[0], c_argv.data());
+        perror("execvp");
+
+        exit(127);
     }
-    else {
-        cmd_str << " start ";
+    close(err[1]);
+
+    boost::system::error_code ec;
+    errors_.assign(::dup(err[0]), ec);
+    close(err[0]);
+    if (ec) {
+        return;
     }
+
+    bzero(rx_buff_, sizeof(rx_buff_));
+    boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
+            boost::bind(&NamespaceManager::ReadErrors, this, boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred));
+}
+
+void NamespaceManager::StartNetNS(
+    const ServiceInstance *svc_instance) {
+    std::stringstream cmd_str;
+
+    if (netns_cmd_.length() == 0) {
+        return;
+    }
+    cmd_str << netns_cmd_ << " start ";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
-
     cmd_str << " --instance_id " << UuidToString(props.instance_id);
     cmd_str << " --vmi_inside " << UuidToString(props.vmi_inside);
     cmd_str << " --vmi_outside " << UuidToString(props.vmi_outside);
@@ -60,21 +148,20 @@ void NamespaceManager::StartNetworkNamespace(
     ExecCmd(cmd_str.str());
 }
 
-void NamespaceManager::StopNetworkNamespace(
+void NamespaceManager::StopNetNS(
     const ServiceInstance *svc_instance) {
     std::stringstream cmd_str;
 
-    std::string cmd = agent_->params()->si_netns_command();
-    if (cmd.length() == 0) {
-        LOG(DEBUG, "Path for network namespace service instance not specified"
-                "in the config file");
+    if (netns_cmd_.length() == 0) {
         return;
     }
-    cmd_str << cmd;
+    cmd_str << netns_cmd_ << " stop ";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
+    if (props.instance_id.is_nil()) {
+        return;
+    }
 
-    cmd_str << " stop ";
     cmd_str << " --instance_id " << UuidToString(props.instance_id);
 
     ExecCmd(cmd_str.str());
@@ -86,8 +173,8 @@ void NamespaceManager::EventObserver(
 
     bool usable = !svc_instance->IsDeleted() && svc_instance->IsUsable();
     if (usable) {
-        StartNetworkNamespace(svc_instance, false);
+        StartNetNS(svc_instance);
     } else {
-        StopNetworkNamespace(svc_instance);
+        StopNetNS(svc_instance);
     }
 }

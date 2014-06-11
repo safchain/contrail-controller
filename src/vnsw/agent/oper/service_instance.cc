@@ -191,6 +191,9 @@ static void FindAndSetTypes(DBGraph *graph, IFMapNode *si_node,
     properties->virtualization_type = virtualization_type;
 }
 
+/*
+ * ServiceInstance Properties
+ */
 void ServiceInstance::Properties::Clear() {
     service_type = 0;
     virtualization_type = 0;
@@ -334,12 +337,18 @@ void ServiceInstanceTable::Delete(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance  = static_cast<ServiceInstance *>(entry);
     IFMapDependencyManager *manager = agent()->oper_db()->dependency_manager();
     manager->ResetObject(svc_instance->node());
+
+    namespace_manager_->Terminate();
 }
 
 bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
     ServiceInstanceUpdate *data =
             static_cast<ServiceInstanceUpdate *>(request->data.get());
+
+    /*
+     * FIX(safchain), get OnChange with another object than ServiceInstanceUpdate
+     */
     svc_instance->set_properties(data->properties());
     return true;
 }
@@ -351,6 +360,9 @@ void ServiceInstanceTable::Initialize(Agent *agent) {
     manager->Register(
         "service-instance",
         boost::bind(&ServiceInstanceTable::ChangeEventHandler, this, _1));
+
+    namespace_manager_ = new NamespaceManager(agent);
+    namespace_manager_->Initialize();
 }
 
 bool ServiceInstanceTable::IFNodeToReq(IFMapNode *node, DBRequest &request) {
