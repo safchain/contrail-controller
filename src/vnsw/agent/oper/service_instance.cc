@@ -15,8 +15,6 @@
 
 using boost::uuids::uuid;
 
-#define OTHER_TYPE  "Other"
-
 /*
  * ServiceInstanceTable create requests contain the IFMapNode that this
  * entry corresponds to.
@@ -49,9 +47,13 @@ class ServiceInstanceUpdate : public AgentData {
 
 class ServiceInstanceTypesMapping {
 public:
-    static ServiceInstance::ServiceType StrServiceTypeToInt(const std::string &type);
-    static std::string IntServiceTypeToStr(const ServiceInstance::ServiceType &type);
-    static ServiceInstance::VirtualizationType StrVirtualizationTypeToInt(const std::string &type);
+    static const std::string kOtherType;
+    static ServiceInstance::ServiceType StrServiceTypeToInt(
+        const std::string &type);
+    static const std::string &IntServiceTypeToStr(
+        const ServiceInstance::ServiceType &type);
+    static ServiceInstance::VirtualizationType StrVirtualizationTypeToInt(
+        const std::string &type);
 
 private:
     typedef std::map<std::string, int> StrTypeToIntMap;
@@ -121,13 +123,6 @@ static uuid IdPermsGetUuid(const autogen::IdPermsType &id) {
     uuid uuid;
     CfgUuidSet(id.uuid.uuid_mslong, id.uuid.uuid_lslong, uuid);
     return uuid;
-}
-
-static void ExecCmd(std::string cmd) {
-    /*
-     * TODO(safchain) start async process
-     */
-    std::cout << "Start NetNS Script: " << cmd << std::endl;
 }
 
 /*
@@ -254,6 +249,11 @@ int ServiceInstance::Properties::CompareTo(const Properties &rhs) const {
     return cmp;
 }
 
+const std::string &ServiceInstance::Properties::ServiceTypeString() const {
+    return ServiceInstanceTypesMapping::IntServiceTypeToStr(
+        static_cast<ServiceType>(service_type));
+}
+
 /*
  * ServiceInstance class
  */
@@ -287,56 +287,10 @@ bool ServiceInstance::DBEntrySandesh(Sandesh *sresp, std::string &name) const {
     return false;
 }
 
-void ServiceInstance::StartNetworkNamespace(bool restart) {
-    std::stringstream cmd_str;
-
-    Agent *agent = Agent::GetInstance();
-
-    std::string cmd = agent->params()->si_netns_command();
-    if (cmd.length() == 0) {
-        LOG(DEBUG, "Path for network namespace service instance not specified"
-                "in the config file");
-        return;
-    }
-    cmd_str << cmd;
-
-    if (restart) {
-        cmd_str << " restart ";
-    }
-    else {
-        cmd_str << " start ";
-    }
-
-    ServiceInstance::Properties props = properties();
-
-    cmd_str << " --instance_id " << UuidToString(props.instance_id);
-    cmd_str << " --vmi_inside " << UuidToString(props.vmi_inside);
-    cmd_str << " --vmi_outside " << UuidToString(props.vmi_outside);
-    cmd_str << " --service_type " << ServiceInstanceTypesMapping::IntServiceTypeToStr(
-            static_cast<ServiceType>(props.service_type));
-
-    ExecCmd(cmd_str.str());
-}
-
-void ServiceInstance::StopNetworkNamespace() {
-    std::stringstream cmd_str;
-
-    Agent *agent = Agent::GetInstance();
-
-    std::string cmd = agent->params()->si_netns_command();
-    if (cmd.length() == 0) {
-        LOG(DEBUG, "Path for network namespace service instance not specified"
-                "in the config file");
-        return;
-    }
-    cmd_str << cmd;
-
-    ServiceInstance::Properties props = properties();
-
-    cmd_str << " stop ";
-    cmd_str << " --instance_id " << UuidToString(props.instance_id);
-
-    ExecCmd(cmd_str.str());
+bool ServiceInstance::IsUsable() const {
+    return (!properties_.instance_id.is_nil() &&
+            !properties_.vmi_inside.is_nil() &&
+            !properties_.vmi_outside.is_nil());
 }
 
 void ServiceInstance::CalculateProperties(Properties *properties) {
@@ -381,8 +335,6 @@ DBEntry *ServiceInstanceTable::Add(const DBRequest *request) {
     IFMapDependencyManager *manager = agent()->oper_db()->dependency_manager();
     manager->SetObject(data->node(), svc_instance);
 
-    svc_instance->StartNetworkNamespace(false);
-
     return svc_instance;
 }
 
@@ -390,8 +342,6 @@ void ServiceInstanceTable::Delete(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance  = static_cast<ServiceInstance *>(entry);
     IFMapDependencyManager *manager = agent()->oper_db()->dependency_manager();
     manager->ResetObject(svc_instance->node());
-
-    svc_instance->StopNetworkNamespace();
 }
 
 bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
@@ -434,8 +384,6 @@ void ServiceInstanceTable::ChangeEventHandler(DBEntry *entry) {
         request->oper = DBRequest::DB_ENTRY_ADD_CHANGE;
         request->data.reset(new ServiceInstanceUpdate(properties));
         Enqueue(request.release());
-
-        svc_instance->StartNetworkNamespace(true);
     }
 }
  
@@ -453,6 +401,7 @@ ServiceInstanceTypesMapping::StrTypeToIntMap
 ServiceInstanceTypesMapping::service_type_map_ = InitServiceTypeMap();
 ServiceInstanceTypesMapping::StrTypeToIntMap
 ServiceInstanceTypesMapping::virtualization_type_map_ = InitVirtualizationTypeMap();
+const std::string ServiceInstanceTypesMapping::kOtherType = "Other";
 
 ServiceInstance::ServiceType ServiceInstanceTypesMapping::StrServiceTypeToInt(
         const std::string &type) {
@@ -472,14 +421,15 @@ ServiceInstance::VirtualizationType ServiceInstanceTypesMapping::StrVirtualizati
     return ServiceInstance::VirtualMachine;
 }
 
-std::string ServiceInstanceTypesMapping::IntServiceTypeToStr(const ServiceInstance::ServiceType &type) {
+const std::string &ServiceInstanceTypesMapping::IntServiceTypeToStr(
+    const ServiceInstance::ServiceType &type) {
     StrTypeToIntMap::const_iterator it = service_type_map_.begin();
     if (it != service_type_map_.end()) {
         if (it->second == type) {
             return it->first;
         }
     }
-    return OTHER_TYPE;
+    return kOtherType;
 }
 
 /*
