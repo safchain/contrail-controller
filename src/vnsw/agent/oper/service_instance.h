@@ -8,6 +8,7 @@
 #include <map>
 #include <boost/uuid/uuid.hpp>
 #include "cmn/agent_db.h"
+#include "namespace_manager.h"
 
 class ServiceInstanceKey : public AgentKey {
   public:
@@ -128,6 +129,8 @@ class ServiceInstanceTable : public AgentDBTable {
      * the dependency manager directly.
      */
     void ChangeEventHandler(DBEntry *entry);
+
+    NamespaceManager *namespace_manager_;
 
     DISALLOW_COPY_AND_ASSIGN(ServiceInstanceTable);
 };
