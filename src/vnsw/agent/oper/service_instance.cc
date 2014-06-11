@@ -343,13 +343,18 @@ void ServiceInstanceTable::Delete(DBEntry *entry, const DBRequest *request) {
 
 bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
-    ServiceInstanceUpdate *data =
-            static_cast<ServiceInstanceUpdate *>(request->data.get());
-
     /*
      * FIX(safchain), get OnChange with another object than ServiceInstanceUpdate
      */
-    svc_instance->set_properties(data->properties());
+    if (dynamic_cast<ServiceInstanceUpdate*>(request->data.get()) != NULL) {
+        ServiceInstanceUpdate *data =
+                static_cast<ServiceInstanceUpdate *>(request->data.get());
+        svc_instance->set_properties(data->properties());
+    } else if (dynamic_cast<ServiceInstanceCreate*>(request->data.get()) != NULL) {
+        ServiceInstance::Properties properties;
+        svc_instance->CalculateProperties(&properties);
+        svc_instance->set_properties(properties);
+    }
     return true;
 }
 
