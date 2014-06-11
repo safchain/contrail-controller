@@ -92,9 +92,9 @@ void NamespaceManager::ExecCmd(const std::string cmd) {
 
     boost::split(argv, cmd, boost::is_any_of(" "), boost::token_compress_on);
 
-    std::vector<char *> c_argv(argv.size() + 1);
+    std::vector<const char *> c_argv(argv.size() + 1);
     for (std::size_t i = 0; i != argv.size(); ++i) {
-        argv[i] = argv[i].c_str();
+        c_argv[i] = argv[i].c_str();
     }
 
     int err[2];
@@ -110,7 +110,7 @@ void NamespaceManager::ExecCmd(const std::string cmd) {
         close(STDOUT_FILENO);
         close(STDIN_FILENO);
 
-        execvp(c_argv[0], c_argv.data());
+        execvp(c_argv[0], (char **) c_argv.data());
         perror("execvp");
 
         exit(127);
