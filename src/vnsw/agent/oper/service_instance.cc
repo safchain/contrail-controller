@@ -352,6 +352,7 @@ bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
         svc_instance->set_properties(data->properties());
     } else if (dynamic_cast<ServiceInstanceCreate*>(request->data.get()) != NULL) {
         ServiceInstance::Properties properties;
+        properties.Clear();
         svc_instance->CalculateProperties(&properties);
         svc_instance->set_properties(properties);
     }
@@ -443,8 +444,8 @@ ServiceInstance::VirtualizationType ServiceInstanceTypesMapping::StrVirtualizati
 
 const std::string &ServiceInstanceTypesMapping::IntServiceTypeToStr(
     const ServiceInstance::ServiceType &type) {
-    StrTypeToIntMap::const_iterator it = service_type_map_.begin();
-    if (it != service_type_map_.end()) {
+    for (StrTypeToIntMap::const_iterator it = service_type_map_.begin();
+         it != service_type_map_.end(); ++it) {
         if (it->second == type) {
             return it->first;
         }
