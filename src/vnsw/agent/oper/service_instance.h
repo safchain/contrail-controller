@@ -42,6 +42,7 @@ public:
     struct Properties {
         void Clear();
         int CompareTo(const Properties &rhs) const;
+        const std::string &ServiceTypeString() const;
 
         /* template parameters */
         int service_type;
@@ -81,8 +82,7 @@ public:
 
     const Properties &properties() const { return properties_; }
 
-    void StartNetworkNamespace(bool restart);
-    void StopNetworkNamespace();
+    bool IsUsable() const;
 
 private:
     boost::uuids::uuid uuid_;

@@ -6,6 +6,8 @@
 #define vnsw_agent_hpp
 
 #include <netinet/ether.h>
+#include <boost/intrusive_ptr.hpp>
+#include "net/address.h"
 
 class AgentParam;
 class AgentConfig;
@@ -88,7 +90,9 @@ class AgentIfMapXmppChannel;
 class AgentDnsXmppChannel;
 class DiscoveryServiceClient;
 class EventManager;
+class IFMapAgentParser;
 class IFMapAgentStaleCleaner;
+class IFMapNode;
 class CfgListener;
 
 class ArpProto;
