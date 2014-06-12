@@ -8,7 +8,6 @@
 #include <map>
 #include <boost/uuid/uuid.hpp>
 #include "cmn/agent_db.h"
-#include "namespace_manager.h"
 
 class ServiceInstanceKey : public AgentKey {
   public:

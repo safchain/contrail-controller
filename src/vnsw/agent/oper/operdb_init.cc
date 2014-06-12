@@ -15,6 +15,7 @@
 #include <oper/route_common.h>
 #include "oper/ifmap_dependency_manager.h"
 #include <oper/interface_common.h>
+#include "oper/namespace_manager.h"
 #include <oper/nexthop.h>
 #include <oper/vrf.h>
 #include <oper/mpls.h>
