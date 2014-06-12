@@ -87,6 +87,8 @@ void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
 void NamespaceManager::ExecCmd(const std::string cmd) {
     std::vector<std::string> argv;
 
+    LOG(DEBUG, "Start a NetNS command: " << cmd);
+
     argv.push_back("/bin/sh");
     argv.push_back("-c");
 

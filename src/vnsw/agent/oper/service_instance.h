@@ -130,8 +130,6 @@ class ServiceInstanceTable : public AgentDBTable {
      */
     void ChangeEventHandler(DBEntry *entry);
 
-    NamespaceManager *namespace_manager_;
-
     DISALLOW_COPY_AND_ASSIGN(ServiceInstanceTable);
 };
 
