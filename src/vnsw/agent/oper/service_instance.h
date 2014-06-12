@@ -70,7 +70,7 @@ public:
     /*
      * Walk the IFMap graph and calculate the properties for this node.
      */
-    void CalculateProperties(Properties *properties);
+    void CalculateProperties(DBGraph *graph, Properties *properties);
 
     void set_node(IFMapNode *node) { node_ = node; }
 

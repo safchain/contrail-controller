@@ -78,51 +78,14 @@ private:
     };
 };
 
-class IFMapNodeLookup {
-public:
-    IFMapNodeLookup(IFMapNode *node, IFMapTable *table);
-
-    class type_iterator : public boost::iterator_facade<
-        type_iterator,
-        DBGraphVertex,
-        boost::forward_traversal_tag> {
-    public:
-        type_iterator();
-        type_iterator(DBGraph *graph, IFMapNode *node, IFMapTable *table);
-
-     private:
-        friend class boost::iterator_core_access;
-
-        void seek();
-        void increment();
-        bool equal(const type_iterator &rhs) const;
-        IFMapNode &dereference() const;
-
-        DBGraph *graph_;
-        IFMapTable *table_;
-        DBGraphVertex::adjacency_iterator iter_;
-        DBGraphVertex::adjacency_iterator end_;
-    };
-
-    type_iterator begin() {
-        return type_iterator(graph_, node_, table_);
-    }
-    type_iterator end() {
-        return type_iterator();
-    }
-
-    IFMapNode *first();
-
-private:
-    IFMapNode *node_;
-    IFMapTable *table_;
-    DBGraph *graph_;
-};
-
 static uuid IdPermsGetUuid(const autogen::IdPermsType &id) {
     uuid uuid;
     CfgUuidSet(id.uuid.uuid_mslong, id.uuid.uuid_lslong, uuid);
     return uuid;
+}
+
+static bool IsNodeType(IFMapNode *node, const char *node_typename) {
+    return (strcmp(node->table()->Typename(), node_typename) == 0);
 }
 
 /*
@@ -130,49 +93,59 @@ static uuid IdPermsGetUuid(const autogen::IdPermsType &id) {
  * find the Virtual Machine associated. Set the vm_id of the ServiceInstanceData
  * object and return the VM node.
  */
-static IFMapNode *FindAndSetVirtualMachine(Agent *agent,
-        ServiceInstance::Properties *properties, IFMapNode *si_node) {
-    IFMapNodeLookup *il = new IFMapNodeLookup(si_node, agent->cfg()->cfg_vm_table());
-    IFMapNode *vm_node = il->first();
-    if (vm_node == NULL) {
-        return NULL;
+static IFMapNode *FindAndSetVirtualMachine(
+    DBGraph *graph, IFMapNode *si_node,
+    ServiceInstance::Properties *properties) {
+
+    for (DBGraphVertex::adjacency_iterator iter = si_node->begin(graph);
+         iter != si_node->end(graph); ++iter) {
+        IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
+        if (IsNodeType(adj, "virtual-machine")) {
+            autogen::VirtualMachine *vm =
+                    static_cast<autogen::VirtualMachine *>(adj->GetObject());
+            properties->instance_id = IdPermsGetUuid(vm->id_perms());
+            return adj;
+        }
     }
-
-    autogen::VirtualMachine *vm =
-            static_cast<autogen::VirtualMachine *>(vm_node->GetObject());
-    properties->instance_id = IdPermsGetUuid(vm->id_perms());
-
-    return vm_node;
+    return NULL;
 }
 
-static void FindAndSetVirtualNetworks(Agent *agent, ServiceInstance::Properties *properties,
-        IFMapNode *vm_node, const std::string &left,
-        const std::string &right) {
-    AgentConfig *config = agent->cfg();
+static std::string FindNetworkName(DBGraph *graph, IFMapNode *vmi_node) {
+    /*
+     * Lookup for VirtualNetwork nodes
+     */
+    for (DBGraphVertex::adjacency_iterator iter = vmi_node->begin(graph);
+         iter != vmi_node->end(graph); ++iter) {
+        IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
+        if (IsNodeType(adj, "virtual-network")) {
+            return adj->name();
+        }
+    }
+    return std::string();
+}
+
+static void FindAndSetInterfaces(
+    DBGraph *graph, IFMapNode *vm_node,
+    const std::string &left, const std::string &right,
+    ServiceInstance::Properties *properties) {
 
     /*
      * Lookup for VMI nodes
      */
-    IFMapNodeLookup *il_vmi = new IFMapNodeLookup(vm_node, config->cfg_vm_interface_table());
-    for (IFMapNodeLookup::type_iterator vmi_iter = il_vmi->begin();
-         vmi_iter != il_vmi->end(); ++vmi_iter) {
-        IFMapNode *vmi_node = static_cast<IFMapNode *>(vmi_iter.operator->());
-
-        /*
-         * Then Lookup for VN nodes
-         */
-        IFMapNodeLookup *il_vn = new IFMapNodeLookup(vmi_node, config->cfg_vn_table());
-        for (IFMapNodeLookup::type_iterator vn_iter = il_vn->begin();
-             vn_iter != il_vn->end(); ++vn_iter) {
-            IFMapNode *vn_node = static_cast<IFMapNode *>(vn_iter.operator->());
-
-            autogen::VirtualNetwork *vn =
-                static_cast<autogen::VirtualNetwork *>(vn_node->GetObject());
-            if (left.compare(vn_node->name()) == 0) {
-                properties->vmi_inside = IdPermsGetUuid(vn->id_perms());
-            } else if (right.compare(vn_node->name()) == 0) {
-                properties->vmi_outside = IdPermsGetUuid(vn->id_perms());
-            }
+    for (DBGraphVertex::adjacency_iterator iter = vm_node->begin(graph);
+         iter != vm_node->end(graph); ++iter) {
+        IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
+        if (!IsNodeType(adj, "virtual-machine-interface")) {
+            continue;
+        }
+        autogen::VirtualMachineInterface *vmi =
+                static_cast<autogen::VirtualMachineInterface *>(
+                    adj->GetObject());
+        std::string netname = FindNetworkName(graph, adj);
+        if (netname == left) {
+            properties->vmi_inside = IdPermsGetUuid(vmi->id_perms());
+        } else if (netname == right) {
+            properties->vmi_outside = IdPermsGetUuid(vmi->id_perms());
         }
     }
 }
@@ -181,19 +154,31 @@ static void FindAndSetVirtualNetworks(Agent *agent, ServiceInstance::Properties 
  * Walks through the graph in order to get the template associated to the
  * Service Instance Node and set the types in the ServiceInstanceData object.
  */
-static void FindAndSetTypes(Agent *agent, ServiceInstance::Properties *properties, IFMapNode *si_node) {
-    IFMapNodeLookup *il = new IFMapNodeLookup(si_node, agent->cfg()->cfg_service_template_table());
-    IFMapNode *st_node = il->first();
+static void FindAndSetTypes(DBGraph *graph, IFMapNode *si_node,
+                            ServiceInstance::Properties *properties) {
+    IFMapNode *st_node = NULL;
+
+    for (DBGraphVertex::adjacency_iterator iter = si_node->begin(graph);
+         iter != si_node->end(graph); ++iter) {
+        IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
+        if (IsNodeType(adj, "service-template")) {
+            st_node = adj;
+            break;
+        }
+    }
+
     if (st_node == NULL) {
         return;
     }
 
     autogen::ServiceTemplate *svc_template =
             static_cast<autogen::ServiceTemplate *>(st_node->GetObject());
-    autogen::ServiceTemplateType svc_template_props = svc_template->properties();
+    autogen::ServiceTemplateType svc_template_props =
+            svc_template->properties();
 
-    ServiceInstance::ServiceType service_type = ServiceInstanceTypesMapping::StrServiceTypeToInt(
-            svc_template_props.service_type);
+    ServiceInstance::ServiceType service_type =
+            ServiceInstanceTypesMapping::StrServiceTypeToInt(
+                svc_template_props.service_type);
     properties->service_type = service_type;
 
     /*
@@ -201,7 +186,8 @@ static void FindAndSetTypes(Agent *agent, ServiceInstance::Properties *propertie
     */
     /*int virtualization_type = ServiceInstanceTypeMapping::StrServiceTypeToInt(
        svc_template_props.service_virtualization_type);*/
-    ServiceInstance::VirtualizationType virtualization_type = ServiceInstance::NetworkNamespace;
+    ServiceInstance::VirtualizationType virtualization_type
+            = ServiceInstance::NetworkNamespace;
     properties->virtualization_type = virtualization_type;
 }
 
@@ -293,23 +279,25 @@ bool ServiceInstance::IsUsable() const {
             !properties_.vmi_outside.is_nil());
 }
 
-void ServiceInstance::CalculateProperties(Properties *properties) {
-    Agent *agent = Agent::GetInstance();
+void ServiceInstance::CalculateProperties(
+    DBGraph *graph, Properties *properties) {
+    properties->Clear();
 
-    autogen::ServiceInstance *svc_instance =
-                 static_cast<autogen::ServiceInstance *>(node()->GetObject());
-    autogen::ServiceInstanceType si_properties = svc_instance->properties();
+    FindAndSetTypes(graph, node_, properties);
 
-    IFMapNode *vm_node = FindAndSetVirtualMachine(agent, properties, node());
+    IFMapNode *vm_node = FindAndSetVirtualMachine(graph, node_, properties);
     if (vm_node == NULL) {
         return;
     }
 
-    FindAndSetVirtualNetworks(agent, properties, vm_node,
-            si_properties.left_virtual_network,
-            si_properties.right_virtual_network);
-
-    FindAndSetTypes(agent, properties, node());
+    autogen::ServiceInstance *svc_instance =
+                 static_cast<autogen::ServiceInstance *>(node_->GetObject());
+    const autogen::ServiceInstanceType &si_properties =
+            svc_instance->properties();
+    FindAndSetInterfaces(graph, vm_node,
+                         si_properties.left_virtual_network,
+                         si_properties.right_virtual_network,
+                         properties);
 }
 
 /*
@@ -378,10 +366,11 @@ bool ServiceInstanceTable::IFNodeToReq(IFMapNode *node, DBRequest &request) {
 void ServiceInstanceTable::ChangeEventHandler(DBEntry *entry) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
     ServiceInstance::Properties properties;
-    svc_instance->CalculateProperties(&properties);
+    svc_instance->CalculateProperties(agent()->cfg()->cfg_graph(), &properties);
     if (properties.CompareTo(svc_instance->properties()) != 0) {
         std::auto_ptr<DBRequest> request(new DBRequest());
         request->oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+        request->key = svc_instance->GetDBRequestKey();
         request->data.reset(new ServiceInstanceUpdate(properties));
         Enqueue(request.release());
     }
@@ -430,60 +419,4 @@ const std::string &ServiceInstanceTypesMapping::IntServiceTypeToStr(
         }
     }
     return kOtherType;
-}
-
-/*
- * IFMapNodeLookup class
- */
-IFMapNodeLookup::IFMapNodeLookup(IFMapNode *node, IFMapTable *table) : node_(node), table_(table) {
-    IFMapAgentTable *t = static_cast<IFMapAgentTable *>(node_->table());
-    graph_ = t->GetGraph();
-}
-
-IFMapNode *IFMapNodeLookup::first() {
-   for (type_iterator it = begin(); it != end(); ++it) {
-       return static_cast<IFMapNode *>(it.operator->());
-   }
-
-   return NULL;
-}
-
-IFMapNodeLookup::type_iterator::type_iterator() : graph_(NULL), table_(NULL) {
-}
-
-IFMapNodeLookup::type_iterator::type_iterator(DBGraph *graph, IFMapNode *node, IFMapTable *table) :
-    graph_(graph), table_(table) {
-    iter_ = node->begin(graph);
-    end_ = node->end(graph);
-
-    seek();
-}
-
-IFMapNode &IFMapNodeLookup::type_iterator::dereference() const {
-    IFMapNode *adj_node = static_cast<IFMapNode *>(iter_.operator->());
-    return *adj_node;
-}
-
-bool IFMapNodeLookup::type_iterator::equal(const type_iterator &rhs) const {
-    if (graph_ == NULL) {
-        return (rhs.graph_ == NULL);
-    }
-    if (rhs.graph_ == NULL) {
-        return iter_ == end_;
-    }
-    return iter_ == rhs.iter_;
-}
-
-void IFMapNodeLookup::type_iterator::increment() {
-    ++iter_;
-    seek();
-}
-
-void IFMapNodeLookup::type_iterator::seek() {
-    for (; iter_ != end_; ++iter_) {
-        IFMapNode *adj_node = static_cast<IFMapNode *>(iter_.operator->());
-        if (adj_node->table() == table_) {
-            return;
-        }
-    }
 }
