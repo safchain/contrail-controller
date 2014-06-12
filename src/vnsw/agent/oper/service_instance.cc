@@ -191,6 +191,9 @@ static void FindAndSetTypes(DBGraph *graph, IFMapNode *si_node,
     properties->virtualization_type = virtualization_type;
 }
 
+/*
+ * ServiceInstance Properties
+ */
 void ServiceInstance::Properties::Clear() {
     service_type = 0;
     virtualization_type = 0;
@@ -338,9 +341,20 @@ void ServiceInstanceTable::Delete(DBEntry *entry, const DBRequest *request) {
 
 bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
-    ServiceInstanceUpdate *data =
-            static_cast<ServiceInstanceUpdate *>(request->data.get());
-    svc_instance->set_properties(data->properties());
+    /*
+     * FIX(safchain), get OnChange with another object than ServiceInstanceUpdate
+     * when restarting agent with a registered instance
+     */
+    if (dynamic_cast<ServiceInstanceUpdate*>(request->data.get()) != NULL) {
+        ServiceInstanceUpdate *data =
+                static_cast<ServiceInstanceUpdate *>(request->data.get());
+        svc_instance->set_properties(data->properties());
+    } else if (dynamic_cast<ServiceInstanceCreate*>(request->data.get()) != NULL) {
+        ServiceInstance::Properties properties;
+        properties.Clear();
+        svc_instance->CalculateProperties(agent()->cfg()->cfg_graph(), &properties);
+        svc_instance->set_properties(properties);
+    }
     return true;
 }
 
@@ -426,8 +440,8 @@ ServiceInstance::VirtualizationType ServiceInstanceTypesMapping::StrVirtualizati
 
 const std::string &ServiceInstanceTypesMapping::IntServiceTypeToStr(
     const ServiceInstance::ServiceType &type) {
-    StrTypeToIntMap::const_iterator it = service_type_map_.begin();
-    if (it != service_type_map_.end()) {
+    for (StrTypeToIntMap::const_iterator it = service_type_map_.begin();
+         it != service_type_map_.end(); ++it) {
         if (it->second == type) {
             return it->first;
         }

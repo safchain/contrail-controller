@@ -12,6 +12,7 @@ class DB;
 class GlobalVrouter;
 class IFMapDependencyManager;
 class MulticastHandler;
+class NamespaceManager;
 
 class OperDB {
 public:
@@ -32,6 +33,10 @@ public:
         return dependency_manager_.get();
     }
 
+    NamespaceManager *namespace_manager() {
+        return namespace_manager_.get();
+    }
+
 private:
     OperDB();
 
@@ -39,6 +44,7 @@ private:
     std::auto_ptr<MulticastHandler> multicast_;
     std::auto_ptr<GlobalVrouter> global_vrouter_;
     std::auto_ptr<IFMapDependencyManager> dependency_manager_;
+    std::auto_ptr<NamespaceManager> namespace_manager_;
 
     DISALLOW_COPY_AND_ASSIGN(OperDB);
 };

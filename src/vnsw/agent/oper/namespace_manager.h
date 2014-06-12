@@ -6,6 +6,7 @@
 #define __AGENT_OPER_NAMESPACE_MANAGER_H__
 
 #include "db/db_table.h"
+#include <boost/asio.hpp>
 
 class Agent;
 class ServiceInstance;
@@ -15,15 +16,22 @@ class ServiceInstance;
  */
 class NamespaceManager {
 public:
+    static const size_t kBufLen = 4098;
+
     NamespaceManager(Agent *agent);
 
     void Initialize();
     void Terminate();
 
+    void HandleSigChild(const boost::system::error_code& error, int sig);
+
 private:
-    void StartNetworkNamespace(const ServiceInstance *svc_instance,
-                               bool restart);
-    void StopNetworkNamespace(const ServiceInstance *svc_instance);
+    void ExecCmd(const std::string cmd);
+    void StartNetNS(const ServiceInstance *svc_instance);
+    void StopNetNS(const ServiceInstance *svc_instance);
+    void RegisterSigHandler();
+    void InitSigHandler();
+    void ReadErrors(const boost::system::error_code &ec, size_t read_bytes);
 
     /*
      * Event observer for changes in the "db.service-instance.0" table.
@@ -33,6 +41,12 @@ private:
     Agent *agent_;
     DBTableBase *si_table_;
     DBTableBase::ListenerId listener_id_;
+    std::string netns_cmd_;
+    boost::asio::signal_set signal_;
+    boost::asio::posix::stream_descriptor errors_;
+    std::stringstream errors_data_;
+    char rx_buff_[kBufLen];
+
 };
 
 #endif
