@@ -66,6 +66,14 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         object->EncodeUpdate(&node);
     }
 
+    void EncodeNodeDelete(pugi::xml_node *parent,
+                          const std::string &obj_typename,
+                          const std::string &obj_name) {
+        pugi::xml_node node = parent->append_child("node");
+        node.append_attribute("type") = obj_typename.c_str();
+        node.append_child("name").text().set(obj_name.c_str());
+    }
+
     void EncodeLink(pugi::xml_node *parent,
                     const std::string &lhs_type,
                     const std::string &lhs_name,
@@ -294,6 +302,112 @@ TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
         EXPECT_EQ(vmi_outside_ids.at(i),
                   svc_instance->properties().vmi_outside);
     }
+}
+
+/*
+ * Remove some of the links and ensure that the depedency tracking is
+ * doing the right thing.
+ */
+TEST_F(ServiceInstanceIntegrationTest, RemoveLinks) {
+    boost::uuids::random_generator gen;
+    uuid svc_id = gen();
+    EncodeServiceInstance(svc_id, "test-3");
+
+    ConnectServiceTemplate("test-3", "tmpl-1");
+
+    uuid vm_id = ConnectVirtualMachine("test-3");
+    uuid vmi1 = ConnectVirtualMachineInterface("test-3", "left");
+    uuid vmi2 = ConnectVirtualMachineInterface("test-3", "right");
+
+    IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
+    parser->ConfigParse(config_, 1);
+    task_util::WaitForIdle();
+
+    ServiceInstanceTable *si_table = agent_->service_instance_table();
+    ServiceInstanceKey key(svc_id);
+    ServiceInstance *svc_instance =
+            static_cast<ServiceInstance *>(si_table->Find(&key, true));
+    ASSERT_TRUE(svc_instance != NULL);
+
+    EXPECT_EQ(vm_id, svc_instance->properties().instance_id);
+    EXPECT_EQ(vmi1, svc_instance->properties().vmi_inside);
+    EXPECT_EQ(vmi2, svc_instance->properties().vmi_outside);
+
+    /*
+     * Remove the link between the vmi and the network.
+     */
+    MessageInit();
+    pugi::xml_node msg = config_.append_child("delete");
+    EncodeLink(&msg,
+               "virtual-machine-interface", "left",
+               "virtual-network", "vnet-left",
+               "virtual-machine-interface-virtual-network");
+    parser->ConfigParse(config_, 1);
+    task_util::WaitForIdle();
+
+    EXPECT_TRUE(svc_instance->properties().vmi_inside.is_nil());
+    EXPECT_EQ(vmi2, svc_instance->properties().vmi_outside);
+
+    /*
+     * Removethe link between the instance and the virtual-machine object.
+     */
+    MessageInit();
+    msg = config_.append_child("delete");
+    EncodeLink(&msg,
+               "virtual-machine", "test-3",
+               "service-instance", "test-3",
+               "virtual-machine-service-instance");
+    parser->ConfigParse(config_, 1);
+    task_util::WaitForIdle();
+
+    EXPECT_TRUE(svc_instance->properties().instance_id.is_nil());
+    EXPECT_TRUE(svc_instance->properties().vmi_inside.is_nil());
+    EXPECT_TRUE(svc_instance->properties().vmi_outside.is_nil());
+}
+
+/*
+ * Delete the service-instance object.
+ */
+TEST_F(ServiceInstanceIntegrationTest, Delete) {
+    boost::uuids::random_generator gen;
+    uuid svc_id = gen();
+    EncodeServiceInstance(svc_id, "test-4");
+
+    ConnectServiceTemplate("test-4", "tmpl-1");
+
+    uuid vm_id = ConnectVirtualMachine("test-4");
+    uuid vmi1 = ConnectVirtualMachineInterface("test-4", "left");
+    uuid vmi2 = ConnectVirtualMachineInterface("test-4", "right");
+
+    IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
+    parser->ConfigParse(config_, 1);
+    task_util::WaitForIdle();
+
+    ServiceInstanceTable *si_table = agent_->service_instance_table();
+    ServiceInstanceKey key(svc_id);
+    ServiceInstance *svc_instance =
+            static_cast<ServiceInstance *>(si_table->Find(&key, true));
+    ASSERT_TRUE(svc_instance != NULL);
+
+    EXPECT_EQ(vm_id, svc_instance->properties().instance_id);
+    EXPECT_EQ(vmi1, svc_instance->properties().vmi_inside);
+    EXPECT_EQ(vmi2, svc_instance->properties().vmi_outside);
+
+    pugi::xml_node msg = config_.append_child("delete");
+    EncodeLink(&msg,
+               "virtual-machine", "test-4",
+               "service-instance", "test-4",
+               "virtual-machine-service-instance");
+    EncodeLink(&msg,
+               "service-instance", "test-4",
+               "service-template", "tmpl-1",
+               "service-instance-service-template");
+    EncodeNodeDelete(&msg, "service-instance", "test-4");
+    parser->ConfigParse(config_, 1);
+    task_util::WaitForIdle();
+
+    DBEntry *entry = si_table->Find(&key, true);
+    EXPECT_TRUE(entry == NULL);
 }
 
 static void SetUp() {
