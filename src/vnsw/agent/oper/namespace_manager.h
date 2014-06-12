@@ -5,10 +5,11 @@
 #ifndef __AGENT_OPER_NAMESPACE_MANAGER_H__
 #define __AGENT_OPER_NAMESPACE_MANAGER_H__
 
-#include "db/db_table.h"
 #include <boost/asio.hpp>
+#include "db/db_table.h"
 
-class Agent;
+class DB;
+class EventManager;
 class ServiceInstance;
 
 /*
@@ -18,9 +19,9 @@ class NamespaceManager {
 public:
     static const size_t kBufLen = 4098;
 
-    NamespaceManager(Agent *agent);
+    NamespaceManager(EventManager *evm);
 
-    void Initialize();
+    void Initialize(DB *database, const std::string &netns_cmd);
     void Terminate();
 
     void HandleSigChild(const boost::system::error_code& error, int sig);
@@ -38,7 +39,6 @@ private:
      */
     void EventObserver(DBTablePartBase *db_part, DBEntryBase *entry);
 
-    Agent *agent_;
     DBTableBase *si_table_;
     DBTableBase::ListenerId listener_id_;
     std::string netns_cmd_;

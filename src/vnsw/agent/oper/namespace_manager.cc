@@ -7,27 +7,24 @@
 #include <boost/bind.hpp>
 #include <sys/wait.h>
 #include "db/db.h"
-#include "cmn/agent.h"
-#include "cmn/agent_param.h"
+#include "io/event_manager.h"
 #include "oper/service_instance.h"
 
-NamespaceManager::NamespaceManager(Agent *agent)
-        : agent_(agent),
-          si_table_(NULL),
+NamespaceManager::NamespaceManager(EventManager *evm)
+        : si_table_(NULL),
           listener_id_(DBTableBase::kInvalidId),
-          signal_(*(agent_->GetEventManager()->io_service())),
-          errors_(*(agent_->GetEventManager()->io_service())) {
+          signal_(*(evm->io_service())),
+          errors_(*(evm->io_service())) {
     InitSigHandler();
 }
 
-void NamespaceManager::Initialize() {
-    DB *database = agent_->GetDB();
+void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd) {
     si_table_ = database->FindTable("db.service-instance.0");
     assert(si_table_);
     listener_id_ = si_table_->Register(
         boost::bind(&NamespaceManager::EventObserver, this, _1, _2));
 
-    netns_cmd_ = agent_->params()->si_netns_command();
+    netns_cmd_ = netns_cmd;
     if (netns_cmd_.length() == 0) {
         LOG(ERROR, "Path for network namespace command not specified"
                    "in the config file");
