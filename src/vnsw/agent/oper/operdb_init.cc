@@ -140,8 +140,13 @@ void OperDB::CreateDBTables(DB *db) {
 
 void OperDB::Init() {
     dependency_manager_->Initialize();
-    namespace_manager_->Initialize(agent_->GetDB(),
-                                   agent_->params()->si_netns_command());
+
+    // Unit tests may not initialize the agent configuration parameters.
+    std::string netns_cmd;
+    if (agent_->params()) {
+        netns_cmd = agent_->params()->si_netns_command();
+    }
+    namespace_manager_->Initialize(agent_->GetDB(), netns_cmd);
 }
 
 void OperDB::RegisterDBClients() {
