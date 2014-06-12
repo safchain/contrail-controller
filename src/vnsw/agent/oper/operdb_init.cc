@@ -30,7 +30,6 @@
 #include <oper/agent_route_encap.h>
 #include <base/task_trigger.h>
 
-OperDB *OperDB::singleton_ = NULL;
 SandeshTraceBufferPtr OperDBTraceBuf(SandeshTraceBufferCreate("Oper DB", 5000));
 
 void OperDB::CreateDBTables(DB *db) {
@@ -148,8 +147,6 @@ OperDB::OperDB(Agent *agent)
           dependency_manager_(
               AgentObjectFactory::Create<IFMapDependencyManager>(
                   agent->GetDB(), agent->cfg()->cfg_graph())) {
-    assert(singleton_ == NULL);
-    singleton_ = this;
 }
 
 OperDB::~OperDB() {

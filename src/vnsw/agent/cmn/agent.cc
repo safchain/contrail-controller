@@ -86,6 +86,15 @@ static void SetTaskPolicyOne(const char *task, const char *exclude_list[],
 }
 
 void Agent::SetAgentTaskPolicy() {
+    /*
+     * TODO(roque): this method should not be called by the agent constructor.
+     */
+    static bool initialized = false;
+    if (initialized) {
+        return;
+    }
+    initialized = true;
+
     const char *db_exclude_list[] = {
         "Agent::FlowHandler",
         "Agent::Services",
@@ -379,6 +388,7 @@ Agent::~Agent() {
 
     delete db_;
     db_ = NULL;
+    singleton_ = NULL;
 }
 
 AgentConfig *Agent::cfg() const {
