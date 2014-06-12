@@ -539,6 +539,10 @@ public:
 
     bool isXenMode();
 
+    /**
+     * Deprecated API
+     * DO NOT USE
+     */
     static Agent *GetInstance() {return singleton_;}
 
     void Shutdown() {

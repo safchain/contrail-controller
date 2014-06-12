@@ -101,7 +101,8 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         EncodeNode(&update, "service-instance", name, &svc_instance);
     }
 
-    void ConnectServiceTemplate(const std::string &name) {
+    void ConnectServiceTemplate(const std::string &si_name,
+                                const std::string &tmpl_name) {
         boost::uuids::random_generator gen;
         autogen::IdPermsType id;
         id.Clear();
@@ -115,20 +116,21 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         props.Clear();
 
         pugi::xml_node update = config_.append_child("update");
-        EncodeNode(&update, "service-template", name, &svc_template);
+        EncodeNode(&update, "service-template", tmpl_name, &svc_template);
 
         update = config_.append_child("update");
         EncodeLink(&update,
-                   "service-instance", name,
-                   "service-template", name,
+                   "service-instance", si_name,
+                   "service-template", tmpl_name,
                    "service-instance-service-template");
     }
 
-    void ConnectVirtualMachine(const std::string &name) {
+    uuid ConnectVirtualMachine(const std::string &name) {
         boost::uuids::random_generator gen;
         autogen::IdPermsType id;
         id.Clear();
-        UuidTypeSet(gen(), &id.uuid);
+        uuid vm_id = gen();
+        UuidTypeSet(vm_id, &id.uuid);
 
         autogen::VirtualMachine virtual_machine;
         virtual_machine.SetProperty("id-perms", &id);
@@ -141,6 +143,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
                    "virtual-machine", name,
                    "service-instance", name,
                    "virtual-machine-service-instance");
+        return vm_id;
     }
 
     void ConnectVirtualNetwork(const std::string &vmi_name) {
@@ -154,7 +157,12 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
 
         pugi::xml_node update = config_.append_child("update");
         std::string vnet_name("vnet-");
-        vnet_name.append(vmi_name);
+        size_t loc = vmi_name.find(':');
+        if (loc != std::string::npos) {
+            vnet_name.append(vmi_name.substr(loc + 1));
+        } else {
+            vnet_name.append(vmi_name);
+        }
         EncodeNode(&update, "virtual-network", vnet_name, &vnet);
 
         update = config_.append_child("update");
@@ -164,12 +172,13 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
                    "virtual-machine-interface-virtual-network");
     }
 
-    void ConnectVirtualMachineInterface(const std::string &vm_name,
+    uuid ConnectVirtualMachineInterface(const std::string &vm_name,
                                         const std::string &vmi_name) {
         boost::uuids::random_generator gen;
         autogen::IdPermsType id;
         id.Clear();
-        UuidTypeSet(gen(), &id.uuid);
+        uuid vmi_id = gen();
+        UuidTypeSet(vmi_id, &id.uuid);
 
         autogen::VirtualMachineInterface vmi;
         vmi.SetProperty("id-perms", &id);
@@ -184,6 +193,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
                    "virtual-machine-interface", vmi_name,
                    "virtual-machine", vm_name,
                    "virtual-machine-interface-virtual-machine");
+        return vmi_id;
     }
 
 
@@ -193,6 +203,10 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
     pugi::xml_node config_;
 };
 
+/*
+ * Verifies that we can flatten the graph into the operational structure
+ * properties that contains the elements necessary to start the netns.
+ */
 TEST_F(ServiceInstanceIntegrationTest, Config) {
     boost::uuids::random_generator gen;
     uuid svc_id = gen();
@@ -210,20 +224,76 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
     ASSERT_TRUE(svc_instance != NULL);
 
     MessageInit();
-    ConnectServiceTemplate("test-1");
+    ConnectServiceTemplate("test-1", "tmpl-1");
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
 
     MessageInit();
-    ConnectVirtualMachine("test-1");
-    ConnectVirtualMachineInterface("test-1", "left");
-    ConnectVirtualMachineInterface("test-1", "right");
+    uuid vm_id = ConnectVirtualMachine("test-1");
+    uuid vmi1 = ConnectVirtualMachineInterface("test-1", "left");
+    uuid vmi2 = ConnectVirtualMachineInterface("test-1", "right");
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
 
-    EXPECT_FALSE(svc_instance->properties().instance_id.is_nil());
-    EXPECT_FALSE(svc_instance->properties().vmi_inside.is_nil());
-    EXPECT_FALSE(svc_instance->properties().vmi_outside.is_nil());
+    EXPECT_EQ(vm_id, svc_instance->properties().instance_id);
+    EXPECT_EQ(vmi1, svc_instance->properties().vmi_inside);
+    EXPECT_EQ(vmi2, svc_instance->properties().vmi_outside);
+}
+
+/*
+ * Ensure that the code can deal with multiple instances.
+ * In this case, the same template is used for all instances.
+ */
+TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
+    static const int kNumTestInstances = 16;
+    typedef std::vector<uuid> UuidList;
+    UuidList svc_ids;
+    UuidList vm_ids;
+    UuidList vmi_inside_ids;
+    UuidList vmi_outside_ids;
+
+    for (int i = 0; i < kNumTestInstances; ++i) {
+        boost::uuids::random_generator gen;
+        uuid svc_id = gen();
+        svc_ids.push_back(svc_id);
+
+        MessageInit();
+        std::stringstream name_gen;
+        name_gen << "instance-" << i;
+        EncodeServiceInstance(svc_id, name_gen.str());
+        ConnectServiceTemplate(name_gen.str(), "nat-netns-template");
+
+        vm_ids.push_back(
+            ConnectVirtualMachine(name_gen.str()));
+        std::string left_id = name_gen.str();
+        left_id.append(":left");
+        vmi_inside_ids.push_back(
+            ConnectVirtualMachineInterface(name_gen.str(), left_id));
+
+        std::string right_id = name_gen.str();
+        right_id.append(":right");
+        vmi_outside_ids.push_back(
+            ConnectVirtualMachineInterface(name_gen.str(), right_id));
+
+        IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
+        parser->ConfigParse(config_, 1);
+    }
+
+    task_util::WaitForIdle();
+
+    for (int i = 0; i < kNumTestInstances; ++i) {
+        ServiceInstanceTable *si_table = agent_->service_instance_table();
+
+        ServiceInstanceKey key(svc_ids.at(i));
+        ServiceInstance *svc_instance =
+                static_cast<ServiceInstance *>(si_table->Find(&key, true));
+        ASSERT_TRUE(svc_instance != NULL);
+
+        EXPECT_EQ(vm_ids.at(i), svc_instance->properties().instance_id);
+        EXPECT_EQ(vmi_inside_ids.at(i), svc_instance->properties().vmi_inside);
+        EXPECT_EQ(vmi_outside_ids.at(i),
+                  svc_instance->properties().vmi_outside);
+    }
 }
 
 static void SetUp() {
