@@ -283,6 +283,10 @@ void ServiceInstance::CalculateProperties(
     DBGraph *graph, Properties *properties) {
     properties->Clear();
 
+    if (node_->IsDeleted()) {
+        return;
+    }
+
     FindAndSetTypes(graph, node_, properties);
 
     IFMapNode *vm_node = FindAndSetVirtualMachine(graph, node_, properties);
@@ -365,8 +369,18 @@ bool ServiceInstanceTable::IFNodeToReq(IFMapNode *node, DBRequest &request) {
 
 void ServiceInstanceTable::ChangeEventHandler(DBEntry *entry) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
+
+    /*
+     * Do not enqueue an ADD_CHANGE operation after the DELETE generated
+     * by IFNodeToReq.
+     */
+    if (svc_instance->node()->IsDeleted()) {
+        return;
+    }
+
     ServiceInstance::Properties properties;
     svc_instance->CalculateProperties(agent()->cfg()->cfg_graph(), &properties);
+
     if (properties.CompareTo(svc_instance->properties()) != 0) {
         std::auto_ptr<DBRequest> request(new DBRequest());
         request->oper = DBRequest::DB_ENTRY_ADD_CHANGE;
