@@ -132,7 +132,7 @@ void OperDB::CreateDBTables(DB *db) {
             static_cast<ServiceInstanceTable *>(
                 db->CreateTable("db.service-instance.0"));
     agent_->SetServiceInstanceTable(si_table);
-    si_table->Initialize(agent_);
+    si_table->Initialize(agent_->cfg()->cfg_graph(), dependency_manager_.get());
 
     multicast_ = std::auto_ptr<MulticastHandler>(new MulticastHandler(agent_));
     global_vrouter_ = std::auto_ptr<GlobalVrouter> (new GlobalVrouter(this));

@@ -61,13 +61,21 @@ if sys.platform != 'darwin':
 
     env.Alias('agent:ifmap_dependency_manager_test',
               ifmap_dependency_manager_test)
+
+    namespace_manager_test = env.UnitTest(
+        'namespace_manager_test',
+        ['namespace_manager_test.cc'])
+    env.Alias('agent:namespace_manager_test', namespace_manager_test)
+
     oper_test_suite = [
-                       test_fabric_interface,
-                       test_inet_interface,
-                       test_intf,
-                       test_linklocal,
-                       test_vrf_assign,
-                       ]
+        ifmap_dependency_manager_test,
+        namespace_manager_test,
+        test_fabric_interface,
+        test_inet_interface,
+        test_intf,
+        test_linklocal,
+        test_vrf_assign,
+        ]
 
     test = env.TestSuite('agent-test', oper_test_suite)
     env.Alias('controller/src/vnsw/agent/oper:test', test)
