@@ -135,6 +135,7 @@ void OperDB::CreateDBTables(DB *db) {
 
 void OperDB::Init() {
     dependency_manager_->Initialize();
+    namespace_manager_->Initialize();
 }
 
 void OperDB::RegisterDBClients() {
@@ -146,10 +147,14 @@ OperDB::OperDB(Agent *agent)
         : agent_(agent),
           dependency_manager_(
               AgentObjectFactory::Create<IFMapDependencyManager>(
-                  agent->GetDB(), agent->cfg()->cfg_graph())) {
+                  agent->GetDB(), agent->cfg()->cfg_graph())),
+          namespace_manager_(
+                  AgentObjectFactory::Create<NamespaceManager>(
+                  agent)) {
 }
 
 OperDB::~OperDB() {
+
 }
 
 void OperDB::Shutdown() {

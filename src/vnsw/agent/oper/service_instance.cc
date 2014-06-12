@@ -337,14 +337,13 @@ void ServiceInstanceTable::Delete(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance  = static_cast<ServiceInstance *>(entry);
     IFMapDependencyManager *manager = agent()->oper_db()->dependency_manager();
     manager->ResetObject(svc_instance->node());
-
-    namespace_manager_->Terminate();
 }
 
 bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
     /*
      * FIX(safchain), get OnChange with another object than ServiceInstanceUpdate
+     * when restarting agent with a registered instance
      */
     if (dynamic_cast<ServiceInstanceUpdate*>(request->data.get()) != NULL) {
         ServiceInstanceUpdate *data =
@@ -353,7 +352,7 @@ bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
     } else if (dynamic_cast<ServiceInstanceCreate*>(request->data.get()) != NULL) {
         ServiceInstance::Properties properties;
         properties.Clear();
-        svc_instance->CalculateProperties(&properties);
+        svc_instance->CalculateProperties(agent()->cfg()->cfg_graph(), &properties);
         svc_instance->set_properties(properties);
     }
     return true;
@@ -366,9 +365,6 @@ void ServiceInstanceTable::Initialize(Agent *agent) {
     manager->Register(
         "service-instance",
         boost::bind(&ServiceInstanceTable::ChangeEventHandler, this, _1));
-
-    namespace_manager_ = new NamespaceManager(agent);
-    namespace_manager_->Initialize();
 }
 
 bool ServiceInstanceTable::IFNodeToReq(IFMapNode *node, DBRequest &request) {
