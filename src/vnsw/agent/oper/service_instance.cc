@@ -311,7 +311,8 @@ void ServiceInstance::CalculateProperties(
  * ServiceInstanceTable class
  */
 ServiceInstanceTable::ServiceInstanceTable(DB *db, const std::string &name)
-        : AgentDBTable(db, name) {
+        : AgentDBTable(db, name),
+          graph_(NULL), dependency_manager_(NULL) {
 }
 
 std::auto_ptr<DBEntry> ServiceInstanceTable::AllocEntry(
@@ -327,16 +328,16 @@ DBEntry *ServiceInstanceTable::Add(const DBRequest *request) {
     ServiceInstanceCreate *data =
             static_cast<ServiceInstanceCreate *>(request->data.get());
     svc_instance->set_node(data->node());
-    IFMapDependencyManager *manager = agent()->oper_db()->dependency_manager();
-    manager->SetObject(data->node(), svc_instance);
+    assert(dependency_manager_);
+    dependency_manager_->SetObject(data->node(), svc_instance);
 
     return svc_instance;
 }
 
 void ServiceInstanceTable::Delete(DBEntry *entry, const DBRequest *request) {
     ServiceInstance *svc_instance  = static_cast<ServiceInstance *>(entry);
-    IFMapDependencyManager *manager = agent()->oper_db()->dependency_manager();
-    manager->ResetObject(svc_instance->node());
+    assert(dependency_manager_);
+    dependency_manager_->ResetObject(svc_instance->node());
 }
 
 bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
@@ -352,17 +353,20 @@ bool ServiceInstanceTable::OnChange(DBEntry *entry, const DBRequest *request) {
     } else if (dynamic_cast<ServiceInstanceCreate*>(request->data.get()) != NULL) {
         ServiceInstance::Properties properties;
         properties.Clear();
-        svc_instance->CalculateProperties(agent()->cfg()->cfg_graph(), &properties);
+        assert(graph_);
+        svc_instance->CalculateProperties(graph_, &properties);
         svc_instance->set_properties(properties);
     }
     return true;
 }
 
-void ServiceInstanceTable::Initialize(Agent *agent) {
-    set_agent(agent);
-    IFMapDependencyManager *manager = agent->oper_db()->dependency_manager();
+void ServiceInstanceTable::Initialize(
+    DBGraph *graph, IFMapDependencyManager *dependency_manager) {
 
-    manager->Register(
+    graph_ = graph;
+    dependency_manager_ = dependency_manager;
+
+    dependency_manager_->Register(
         "service-instance",
         boost::bind(&ServiceInstanceTable::ChangeEventHandler, this, _1));
 }
@@ -370,7 +374,7 @@ void ServiceInstanceTable::Initialize(Agent *agent) {
 bool ServiceInstanceTable::IFNodeToReq(IFMapNode *node, DBRequest &request) {
     autogen::ServiceInstance *svc_instance =
             static_cast<autogen::ServiceInstance *>(node->GetObject());
-    autogen::IdPermsType id = svc_instance->id_perms();
+    const autogen::IdPermsType &id = svc_instance->id_perms();
     request.key.reset(new ServiceInstanceKey(IdPermsGetUuid(id)));
     if (!node->IsDeleted()) {
         request.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
@@ -392,15 +396,16 @@ void ServiceInstanceTable::ChangeEventHandler(DBEntry *entry) {
         return;
     }
 
+    assert(graph_);
     ServiceInstance::Properties properties;
-    svc_instance->CalculateProperties(agent()->cfg()->cfg_graph(), &properties);
+    svc_instance->CalculateProperties(graph_, &properties);
 
     if (properties.CompareTo(svc_instance->properties()) != 0) {
-        std::auto_ptr<DBRequest> request(new DBRequest());
-        request->oper = DBRequest::DB_ENTRY_ADD_CHANGE;
-        request->key = svc_instance->GetDBRequestKey();
-        request->data.reset(new ServiceInstanceUpdate(properties));
-        Enqueue(request.release());
+        DBRequest request;
+        request.oper = DBRequest::DB_ENTRY_ADD_CHANGE;
+        request.key = svc_instance->GetDBRequestKey();
+        request.data.reset(new ServiceInstanceUpdate(properties));
+        Enqueue(&request);
     }
 }
  

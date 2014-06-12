@@ -9,6 +9,9 @@
 #include <boost/uuid/uuid.hpp>
 #include "cmn/agent_db.h"
 
+class DBGraph;
+class IFMapDependencyManager;
+
 class ServiceInstanceKey : public AgentKey {
   public:
     ServiceInstanceKey(boost::uuids::uuid uuid) {
@@ -101,7 +104,7 @@ class ServiceInstanceTable : public AgentDBTable {
     /*
      * Register with the dependency manager.
      */
-    void Initialize(Agent *agent);
+    void Initialize(DBGraph *graph, IFMapDependencyManager *dependency_manager);
 
     /*
      * Add/Delete methods establish the mapping between the IFMapNode
@@ -128,6 +131,9 @@ class ServiceInstanceTable : public AgentDBTable {
      * the dependency manager directly.
      */
     void ChangeEventHandler(DBEntry *entry);
+
+    DBGraph *graph_;
+    IFMapDependencyManager *dependency_manager_;
 
     DISALLOW_COPY_AND_ASSIGN(ServiceInstanceTable);
 };
