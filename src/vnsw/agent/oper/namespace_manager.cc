@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 Juniper Networks, Inc. All righ	    ts reserved.
+ * Copyright (c) 2014 Juniper Networks, Inc. All rights reserved.
  */
 
 #include "oper/namespace_manager.h"
