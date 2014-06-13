@@ -6,17 +6,21 @@
 #define __AGENT_OPER_NAMESPACE_MANAGER_H__
 
 #include <boost/asio.hpp>
+#include <boost/uuid/uuid.hpp>
 #include "db/db_table.h"
 
 class DB;
 class EventManager;
 class ServiceInstance;
+class NamespaceState;
 
 /*
  * Starts and stops network namespaces corresponding to service-instances.
  */
 class NamespaceManager {
 public:
+    typedef std::map<const pid_t, const NamespaceState &> NamespaceStatePidMap;
+    typedef std::pair<const pid_t, const NamespaceState &> NamespaceStatePidPair;
     static const size_t kBufLen = 4098;
 
     NamespaceManager(EventManager *evm);
@@ -27,12 +31,13 @@ public:
     void HandleSigChild(const boost::system::error_code& error, int sig);
 
 private:
-    void ExecCmd(const std::string cmd);
+    void ExecCmd(const std::string &cmd, NamespaceState &state);
     void StartNetNS(const ServiceInstance *svc_instance);
     void StopNetNS(const ServiceInstance *svc_instance);
     void RegisterSigHandler();
     void InitSigHandler();
-    void ReadErrors(const boost::system::error_code &ec, size_t read_bytes);
+    void ReadErrors(const boost::system::error_code &ec, size_t read_bytes,
+            NamespaceState &state);
 
     /*
      * Event observer for changes in the "db.service-instance.0" table.
@@ -47,6 +52,7 @@ private:
     std::stringstream errors_data_;
     char rx_buff_[kBufLen];
 
+    NamespaceStatePidMap namespace_state_pid_map_;
 };
 
 #endif
