@@ -126,8 +126,11 @@ static std::string FindNetworkName(DBGraph *graph, IFMapNode *vmi_node) {
 
 static void FindAndSetInterfaces(
     DBGraph *graph, IFMapNode *vm_node,
-    const std::string &left, const std::string &right,
+    autogen::ServiceInstance *svc_instance,
     ServiceInstance::Properties *properties) {
+
+    const autogen::ServiceInstanceType &si_properties =
+            svc_instance->properties();
 
     /*
      * Lookup for VMI nodes
@@ -142,12 +145,18 @@ static void FindAndSetInterfaces(
                 static_cast<autogen::VirtualMachineInterface *>(
                     adj->GetObject());
         std::string netname = FindNetworkName(graph, adj);
-        if (netname == left) {
+        if (netname == si_properties.left_virtual_network) {
             properties->vmi_inside = IdPermsGetUuid(vmi->id_perms());
-        } else if (netname == right) {
+            properties->mac_addr_inside = vmi->mac_addresses().at(0);
+
+        } else if (netname == si_properties.right_virtual_network) {
             properties->vmi_outside = IdPermsGetUuid(vmi->id_perms());
+            properties->mac_addr_outside = vmi->mac_addresses().at(0);
         }
     }
+
+    properties->ip_addr_inside = si_properties.left_ip_address;
+    properties->ip_addr_outside = si_properties.right_ip_address;
 }
 
 /*
@@ -200,6 +209,10 @@ void ServiceInstance::Properties::Clear() {
     instance_id = boost::uuids::nil_uuid();
     vmi_inside = boost::uuids::nil_uuid();
     vmi_outside = boost::uuids::nil_uuid();
+    mac_addr_inside.empty();
+    mac_addr_outside.empty();
+    ip_addr_inside.empty();
+    ip_addr_outside.empty();
 }
 
 template <typename Type>
@@ -299,12 +312,7 @@ void ServiceInstance::CalculateProperties(
 
     autogen::ServiceInstance *svc_instance =
                  static_cast<autogen::ServiceInstance *>(node_->GetObject());
-    const autogen::ServiceInstanceType &si_properties =
-            svc_instance->properties();
-    FindAndSetInterfaces(graph, vm_node,
-                         si_properties.left_virtual_network,
-                         si_properties.right_virtual_network,
-                         properties);
+    FindAndSetInterfaces(graph, vm_node, svc_instance, properties);
 }
 
 /*

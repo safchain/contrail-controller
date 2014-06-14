@@ -57,6 +57,12 @@ public:
         /* interfaces */
         boost::uuids::uuid vmi_inside;
         boost::uuids::uuid vmi_outside;
+
+        std::string mac_addr_inside;
+        std::string mac_addr_outside;
+
+        std::string ip_addr_inside;
+        std::string ip_addr_outside;
     };
 
     ServiceInstance();

@@ -9,7 +9,6 @@
 #include "db/db.h"
 #include "io/event_manager.h"
 #include "oper/service_instance.h"
-#include "oper/namespace_state.h"
 
 using boost::uuids::uuid;
 
@@ -41,9 +40,14 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code& error, in
         while ((pid = ::waitpid(-1, &status, WNOHANG)) > 0) {
             NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
             if (it != namespace_state_pid_map_.end()) {
-                NamespaceState state = it->second;
-                state.set_status(status);
+                NamespaceState *state = it->second;
+                state->set_status(status);
+
+                /*
+                 * TODO(safchain), store the state here
+                 */
                 namespace_state_pid_map_.erase(pid);
+                delete state;
             }
         }
         RegisterSigHandler();
@@ -70,7 +74,7 @@ void NamespaceManager::Terminate() {
 }
 
 void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
-                      size_t read_bytes, NamespaceState &state) {
+                      size_t read_bytes, NamespaceState *state) {
     if (read_bytes) {
         errors_data_ << rx_buff_;
     }
@@ -82,7 +86,7 @@ void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
         std::string errors = errors_data_.str();
         if (errors.length() > 0) {
             LOG(ERROR, errors);
-            state.set_last_errrors(errors);
+            state->set_last_errrors(errors);
         }
         errors_data_.clear();
     } else {
@@ -94,11 +98,11 @@ void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
 }
 
 void NamespaceManager::ExecCmd(const std::string &cmd,
-        NamespaceState &state) {
+        NamespaceState *state) {
     std::vector<std::string> argv;
 
     LOG(DEBUG, "Start a NetNS command: " << cmd);
-    state.set_last_cmd(cmd);
+    state->set_last_cmd(cmd);
 
     argv.push_back("/bin/sh");
     argv.push_back("-c");
@@ -131,7 +135,7 @@ void NamespaceManager::ExecCmd(const std::string &cmd,
     }
     close(err[1]);
 
-    state.set_pid(pid);
+    state->set_pid(pid);
     namespace_state_pid_map_.insert(NamespaceStatePidPair(pid, state));
 
     boost::system::error_code ec;
@@ -160,10 +164,14 @@ void NamespaceManager::StartNetNS(
     cmd_str << " --instance_id " << UuidToString(props.instance_id);
     cmd_str << " --vmi_inside " << UuidToString(props.vmi_inside);
     cmd_str << " --vmi_outside " << UuidToString(props.vmi_outside);
+    cmd_str << " --ip_inside " << props.ip_addr_inside;
+    cmd_str << " --ip_outside " << props.ip_addr_outside;
+    cmd_str << " --mac_inside " << props.mac_addr_inside;
+    cmd_str << " --mac_outside " << props.mac_addr_outside;
     cmd_str << " --service_type " << props.ServiceTypeString();
 
-    NamespaceState state;
-    state.set_svc_instance(svc_instance);
+    NamespaceState *state = new NamespaceState();
+    state->set_svc_instance(svc_instance);
 
     ExecCmd(cmd_str.str(), state);
 }
@@ -184,8 +192,8 @@ void NamespaceManager::StopNetNS(
 
     cmd_str << " --instance_id " << UuidToString(props.instance_id);
 
-    NamespaceState state;
-    state.set_svc_instance(svc_instance);
+    NamespaceState *state = new NamespaceState();
+    state->set_svc_instance(svc_instance);
 
     ExecCmd(cmd_str.str(), state);
 }
@@ -200,4 +208,10 @@ void NamespaceManager::EventObserver(
     } else {
         StopNetNS(svc_instance);
     }
+}
+
+/*
+ * NamespaceState class
+ */
+NamespaceState::NamespaceState() : pid_(0), svc_instance_(NULL), status_(0) {
 }
