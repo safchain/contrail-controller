@@ -17,6 +17,7 @@
 #include <sstream>
 #include <fstream>
 #include <uve/agent_uve.h>
+#include "cmn/agent_signal.h"
 
 using namespace boost::uuids;
 using namespace boost::asio;
@@ -28,15 +29,11 @@ VmStat::VmStat(Agent *agent, const uuid &vm_uuid):
     prev_vcpu_snapshot_time_(0), 
     input_(*(agent_->GetEventManager()->io_service())),
     timer_(TimerManager::CreateTimer(*(agent_->GetEventManager())->io_service(),
-    "VmStatTimer")), marked_delete_(false), pid_(0), retry_(0), 
-    signal_(*(agent_->GetEventManager()->io_service())) {
-    InitSigHandler();
+    "VmStatTimer")), marked_delete_(false), pid_(0), retry_(0) {
 }
 
 VmStat::~VmStat() {
     TimerManager::DeleteTimer(timer_);
-    boost::system::error_code ec;
-    signal_.cancel(ec);
 }
 
 void VmStat::ReadData(const boost::system::error_code &ec,
@@ -353,26 +350,5 @@ void VmStat::Stop() {
         //entry as asio may be using it
         delete this;
     }
-}
-
-void VmStat::HandleSigChild(const boost::system::error_code& error, int sig) {
-    if (!error) {
-        int status;
-        while (::waitpid(-1, &status, WNOHANG) > 0);
-        RegisterSigHandler();
-    }
-}
-
-void VmStat::RegisterSigHandler() {
-    signal_.async_wait(boost::bind(&VmStat::HandleSigChild, this, _1, _2));
-}
-
-void VmStat::InitSigHandler() {
-    boost::system::error_code ec;
-    signal_.add(SIGCHLD, ec);
-    if (ec) {
-        LOG(ERROR, "SIGCHLD registration failed");
-    }
-    RegisterSigHandler();
 }
 

@@ -172,6 +172,15 @@ void Agent::ShutdownLifetimeManager() {
     lifetime_manager_ = NULL;
 }
 
+void Agent::CreateAgentSignal() {
+    agent_signal_ = new AgentSignal(event_mgr_);
+}
+
+void Agent::ShutdownAgentSignal() {
+    agent_signal_->Terminate();
+    delete agent_signal_;
+}
+
 // Get configuration from AgentParam into Agent
 void Agent::CopyConfig(AgentParam *params) {
     params_ = params;
@@ -378,6 +387,8 @@ Agent::Agent() :
 
     SetAgentTaskPolicy();
     CreateLifetimeManager();
+
+    CreateAgentSignal();
 }
 
 Agent::~Agent() {
@@ -385,6 +396,7 @@ Agent::~Agent() {
     event_mgr_ = NULL;
 
     ShutdownLifetimeManager();
+    ShutdownAgentSignal();
 
     delete db_;
     db_ = NULL;

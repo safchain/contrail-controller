@@ -9,13 +9,13 @@
 #include "db/db.h"
 #include "io/event_manager.h"
 #include "oper/service_instance.h"
+#include "cmn/agent_signal.h"
 
 using boost::uuids::uuid;
 
 NamespaceManager::NamespaceManager(EventManager *evm)
         : si_table_(NULL),
           listener_id_(DBTableBase::kInvalidId),
-          signal_(*(evm->io_service())),
           errors_(*(evm->io_service())) {
     InitSigHandler();
 }
@@ -33,44 +33,31 @@ void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd) {
     }
 }
 
-void NamespaceManager::HandleSigChild(const boost::system::error_code& error, int sig) {
-    if (!error) {
-        int status;
-        pid_t pid = 0;
-        while ((pid = ::waitpid(-1, &status, WNOHANG)) > 0) {
-            NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
-            if (it != namespace_state_pid_map_.end()) {
-                NamespaceState *state = it->second;
-                state->set_status(status);
+void NamespaceManager::HandleSigChild(const boost::system::error_code &error, int sig, pid_t pid, int status) {
+    switch(sig) {
+    case SIGCHLD:
+        NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
+        if (it != namespace_state_pid_map_.end()) {
+            NamespaceState *state = it->second;
+            state->set_status(status);
 
-                /*
-                 * TODO(safchain), store the state here
-                 */
-                namespace_state_pid_map_.erase(pid);
-                delete state;
-            }
+            /*
+             * TODO(safchain), store the state here
+             */
+            namespace_state_pid_map_.erase(pid);
+            delete state;
         }
-        RegisterSigHandler();
+        break;
     }
-}
-
-void NamespaceManager::RegisterSigHandler() {
-    signal_.async_wait(boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2));
 }
 
 void NamespaceManager::InitSigHandler() {
-    boost::system::error_code ec;
-    signal_.add(SIGCHLD, ec);
-    if (ec) {
-        LOG(ERROR, "SIGCHLD registration failed");
-    }
-    RegisterSigHandler();
+    Agent *agent = Agent::GetInstance();
+    agent->agent_signal()->RegisterHandler(boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2, _3, _4));
 }
 
 void NamespaceManager::Terminate() {
     si_table_->Unregister(listener_id_);
-    boost::system::error_code ec;
-    signal_.cancel(ec);
 }
 
 void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
@@ -102,6 +89,7 @@ void NamespaceManager::ExecCmd(const std::string &cmd,
     std::vector<std::string> argv;
 
     LOG(DEBUG, "Start a NetNS command: " << cmd);
+
     state->set_last_cmd(cmd);
 
     argv.push_back("/bin/sh");

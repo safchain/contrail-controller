@@ -8,6 +8,7 @@
 #include <boost/asio.hpp>
 #include <boost/uuid/uuid.hpp>
 #include "db/db_table.h"
+#include "cmn/agent_signal.h"
 
 class DB;
 class EventManager;
@@ -28,7 +29,7 @@ public:
     void Initialize(DB *database, const std::string &netns_cmd);
     void Terminate();
 
-    void HandleSigChild(const boost::system::error_code& error, int sig);
+    void HandleSigChild(const boost::system::error_code& error, int sig, pid_t pid, int status);
 
 private:
     void ExecCmd(const std::string &cmd, NamespaceState *state);
@@ -47,11 +48,9 @@ private:
     DBTableBase *si_table_;
     DBTableBase::ListenerId listener_id_;
     std::string netns_cmd_;
-    boost::asio::signal_set signal_;
     boost::asio::posix::stream_descriptor errors_;
     std::stringstream errors_data_;
     char rx_buff_[kBufLen];
-
     NamespaceStatePidMap namespace_state_pid_map_;
 };
 

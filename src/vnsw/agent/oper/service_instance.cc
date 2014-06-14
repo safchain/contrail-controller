@@ -9,9 +9,27 @@
 
 #include "oper/ifmap_dependency_manager.h"
 #include "oper/operdb_init.h"
+
+
+#include <cfg/cfg_init.h>
+#include <cfg/cfg_interface.h>
+#include <oper/operdb_init.h>
+#include <oper/route_common.h>
+#include <oper/vm.h>
+#include <oper/vn.h>
+#include <oper/vrf.h>
+#include <oper/nexthop.h>
+#include <oper/mpls.h>
+#include <oper/mirror_table.h>
+#include <oper/interface_common.h>
+#include <oper/vrf_assign.h>
+#include <oper/vxlan.h>
+#include <vnc_cfg_types.h>
+
 #include <cfg/cfg_init.h>
 #include <cmn/agent.h>
 #include <cmn/agent_param.h>
+#include "base/logging.h"
 
 using boost::uuids::uuid;
 
