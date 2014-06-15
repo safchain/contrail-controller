@@ -36,24 +36,34 @@ void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd) {
 void NamespaceManager::HandleSigChild(const boost::system::error_code &error, int sig, pid_t pid, int status) {
     switch(sig) {
     case SIGCHLD:
-        NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
-        if (it != namespace_state_pid_map_.end()) {
-            NamespaceState *state = it->second;
+        NamespaceState *state = GetState(pid);
+        if (state != NULL) {
             state->set_status(status);
-
-            /*
-             * TODO(safchain), store the state here
-             */
-            namespace_state_pid_map_.erase(pid);
-            delete state;
         }
         break;
     }
 }
 
+NamespaceState *NamespaceManager::GetState(pid_t pid) {
+    NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
+    if (it != namespace_state_pid_map_.end()) {
+        return it->second;
+    }
+    return NULL;
+}
+
+void NamespaceManager::RemoveState(pid_t pid) {
+    NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
+    if (it != namespace_state_pid_map_.end()) {
+        delete it->second;
+        namespace_state_pid_map_.erase(pid);
+    }
+}
+
 void NamespaceManager::InitSigHandler() {
     Agent *agent = Agent::GetInstance();
-    agent->agent_signal()->RegisterHandler(boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2, _3, _4));
+    AgentSignal::SignalChildHandler handler = boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2, _3, _4);
+    agent->agent_signal()->RegisterHandler(handler);
 }
 
 void NamespaceManager::Terminate() {
@@ -61,7 +71,7 @@ void NamespaceManager::Terminate() {
 }
 
 void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
-                      size_t read_bytes, NamespaceState *state) {
+                      size_t read_bytes, pid_t pid) {
     if (read_bytes) {
         errors_data_ << rx_buff_;
     }
@@ -73,14 +83,18 @@ void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
         std::string errors = errors_data_.str();
         if (errors.length() > 0) {
             LOG(ERROR, errors);
-            state->set_last_errrors(errors);
+
+            NamespaceState *state = GetState(pid);
+            if (state != NULL) {
+                state->set_last_errrors(errors);
+            }
         }
         errors_data_.clear();
     } else {
         bzero(rx_buff_, sizeof(rx_buff_));
         boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
                 boost::bind(&NamespaceManager::ReadErrors, this, boost::asio::placeholders::error,
-                        boost::asio::placeholders::bytes_transferred, state));
+                        boost::asio::placeholders::bytes_transferred, pid));
     }
 }
 
@@ -136,7 +150,7 @@ void NamespaceManager::ExecCmd(const std::string &cmd,
     bzero(rx_buff_, sizeof(rx_buff_));
     boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
             boost::bind(&NamespaceManager::ReadErrors, this, boost::asio::placeholders::error,
-                    boost::asio::placeholders::bytes_transferred, state));
+                    boost::asio::placeholders::bytes_transferred, pid));
 }
 
 void NamespaceManager::StartNetNS(
@@ -160,6 +174,8 @@ void NamespaceManager::StartNetNS(
 
     NamespaceState *state = new NamespaceState();
     state->set_svc_instance(svc_instance);
+
+
 
     ExecCmd(cmd_str.str(), state);
 }

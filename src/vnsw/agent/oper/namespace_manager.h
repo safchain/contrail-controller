@@ -37,8 +37,9 @@ private:
     void StopNetNS(const ServiceInstance *svc_instance);
     void RegisterSigHandler();
     void InitSigHandler();
-    void ReadErrors(const boost::system::error_code &ec, size_t read_bytes,
-            NamespaceState *state);
+    void ReadErrors(const boost::system::error_code &ec, size_t read_bytes, pid_t pid);
+    NamespaceState *GetState(pid_t pid);
+    void RemoveState(pid_t pid);
 
     /*
      * Event observer for changes in the "db.service-instance.0" table.

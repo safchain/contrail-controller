@@ -14,14 +14,26 @@ AgentSignal::AgentSignal(EventManager *evm) : signal_(*(evm->io_service())) {
 }
 
 void AgentSignal::RegisterHandler(SignalHandler handler) {
-    callbacks_.push_back(handler);
+    default_callbacks_.push_back(handler);
 }
 
-void AgentSignal::Notify(const boost::system::error_code &error, int sig, int pid, int status) {
-    for (std::vector<SignalHandler>::iterator it = callbacks_.begin();
-         it != callbacks_.end(); ++it) {
-        SignalHandler sh = *it;
+void AgentSignal::RegisterHandler(SignalChildHandler handler) {
+    sigchld_callbacks_.push_back(handler);
+}
+
+void AgentSignal::NotifySigChld(const boost::system::error_code &error, int sig, int pid, int status) {
+    for (std::vector<SignalChildHandler>::iterator it = sigchld_callbacks_.begin();
+         it != sigchld_callbacks_.end(); ++it) {
+        SignalChildHandler sh = *it;
         sh(error, sig, pid, status);
+    }
+}
+
+void AgentSignal::NotifyDefault(const boost::system::error_code &error, int sig) {
+    for (std::vector<SignalHandler>::iterator it = default_callbacks_.begin();
+         it != default_callbacks_.end(); ++it) {
+        SignalHandler sh = *it;
+        sh(error, sig);
     }
 }
 
@@ -33,11 +45,11 @@ void AgentSignal::HandleSig(const boost::system::error_code &error, int sig) {
         switch(sig) {
         case SIGCHLD:
             while ((pid = ::waitpid(-1, &status, WNOHANG)) > 0) {
-                Notify(error, sig, pid, status);
+                NotifySigChld(error, sig, pid, status);
             }
             break;
         default:
-            Notify(error, sig, pid, status);
+            NotifyDefault(error, sig);
         }
         RegisterSigHandler();
     }
