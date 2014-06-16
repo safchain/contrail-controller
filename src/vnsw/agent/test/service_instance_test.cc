@@ -348,7 +348,7 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
  * In this case, the same template is used for all instances.
  */
 TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
-    static const int kNumTestInstances = 2;
+    static const int kNumTestInstances = 16;
     typedef std::vector<uuid> UuidList;
     typedef std::vector<std::string> StrList;
     UuidList svc_ids;
