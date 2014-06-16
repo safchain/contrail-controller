@@ -110,7 +110,25 @@ static IFMapNode *FindAndSetVirtualMachine(
     return NULL;
 }
 
-static std::string FindNetworkName(DBGraph *graph, IFMapNode *vmi_node) {
+static IFMapNode *FindNetworkIpam(DBGraph *graph, IFMapNode *vn_node) {
+    for (DBGraphVertex::adjacency_iterator iter = vn_node->begin(graph);
+             iter != vn_node->end(graph); ++iter) {
+        IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
+
+        if (IsNodeType(adj, "virtual-network-network-ipam")) {
+            for (DBGraphVertex::adjacency_iterator iter = adj->begin(graph);
+                         iter != adj->end(graph); ++iter) {
+                IFMapNode *adj2 = static_cast<IFMapNode *>(iter.operator->());
+                if (IsNodeType(adj2, "network-ipam")) {
+                    return  adj2;
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+static IFMapNode *FindNetwork(DBGraph *graph, IFMapNode *vmi_node) {
     /*
      * Lookup for VirtualNetwork nodes
      */
@@ -118,10 +136,40 @@ static std::string FindNetworkName(DBGraph *graph, IFMapNode *vmi_node) {
          iter != vmi_node->end(graph); ++iter) {
         IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
         if (IsNodeType(adj, "virtual-network")) {
-            return adj->name();
+            return adj;
+        }
+    }
+    return NULL;
+}
+
+static std::string FindInterfaceIp(DBGraph *graph, IFMapNode *vmi_node) {
+    for (DBGraphVertex::adjacency_iterator iter = vmi_node->begin(graph);
+             iter != vmi_node->end(graph); ++iter) {
+        IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
+        if (IsNodeType(adj, "instance-ip")) {
+            autogen::InstanceIp *ip =
+                    static_cast<autogen::InstanceIp *>(adj->GetObject());
+            return ip->address();
         }
     }
     return std::string();
+}
+
+static bool SubNetContainsIpv4(const autogen::IpamSubnetType &subnet,
+            const std::string &ip) {
+    typedef boost::asio::ip::address_v4 Ipv4Address;
+    std::string prefix = subnet.subnet.ip_prefix;
+    int prefix_len = subnet.subnet.ip_prefix_len;
+
+    boost::system::error_code ec;
+    Ipv4Address ipv4 = Ipv4Address::from_string(ip, ec);
+    Ipv4Address ipv4_prefix = Ipv4Address::from_string(prefix, ec);
+    unsigned long mask = (0xFFFFFFFF << (32 - prefix_len)) & 0xFFFFFFFF;
+
+    if ((ipv4.to_ulong() & mask) == (ipv4_prefix.to_ulong() & mask)) {
+        return true;
+    }
+    return false;
 }
 
 static void FindAndSetInterfaces(
@@ -144,19 +192,45 @@ static void FindAndSetInterfaces(
         autogen::VirtualMachineInterface *vmi =
                 static_cast<autogen::VirtualMachineInterface *>(
                     adj->GetObject());
-        std::string netname = FindNetworkName(graph, adj);
+
+        IFMapNode *vn_node = FindNetwork(graph, adj);
+        if (vn_node == NULL) {
+            continue;
+        }
+
+        std::string netname = vn_node->name();
         if (netname == si_properties.left_virtual_network) {
             properties->vmi_inside = IdPermsGetUuid(vmi->id_perms());
             properties->mac_addr_inside = vmi->mac_addresses().at(0);
+            properties->ip_addr_inside = FindInterfaceIp(graph, adj);
 
         } else if (netname == si_properties.right_virtual_network) {
             properties->vmi_outside = IdPermsGetUuid(vmi->id_perms());
             properties->mac_addr_outside = vmi->mac_addresses().at(0);
+            properties->ip_addr_outside = FindInterfaceIp(graph, adj);
+        }
+
+        IFMapNode *ipam_node = FindNetworkIpam(graph, vn_node);
+        if (ipam_node == NULL) {
+            continue;
+        }
+
+        autogen::VirtualNetworkNetworkIpam *ipam =
+            static_cast<autogen::VirtualNetworkNetworkIpam *> (ipam_node->GetObject());
+        const autogen::VnSubnetsType &subnets = ipam->data();
+        for (unsigned int i = 0; i < subnets.ipam_subnets.size(); ++i) {
+            int prefix_len = subnets.ipam_subnets[i].subnet.ip_prefix_len;
+            if (netname == si_properties.left_virtual_network &&
+                SubNetContainsIpv4(subnets.ipam_subnets[i],
+                        properties->ip_addr_inside)) {
+                properties->ip_prefix_len_inside = boost::lexical_cast<std::string>(prefix_len);
+            } else if (netname == si_properties.left_virtual_network &&
+                       SubNetContainsIpv4(subnets.ipam_subnets[i],
+                                properties->ip_addr_outside)) {
+                properties->ip_prefix_len_outside = boost::lexical_cast<std::string>(prefix_len);
+            }
         }
     }
-
-    properties->ip_addr_inside = si_properties.left_ip_address;
-    properties->ip_addr_outside = si_properties.right_ip_address;
 }
 
 /*
@@ -191,8 +265,8 @@ static void FindAndSetTypes(DBGraph *graph, IFMapNode *si_node,
     properties->service_type = service_type;
 
     /*
-    * TODO(safchain) waiting for the edouard's patch merge
-    */
+     * TODO(safchain) waiting for the edouard's patch merge
+     */
     /*int virtualization_type = ServiceInstanceTypeMapping::StrServiceTypeToInt(
        svc_template_props.service_virtualization_type);*/
     ServiceInstance::VirtualizationType virtualization_type
@@ -213,6 +287,8 @@ void ServiceInstance::Properties::Clear() {
     mac_addr_outside.empty();
     ip_addr_inside.empty();
     ip_addr_outside.empty();
+    ip_prefix_len_inside.empty();
+    ip_prefix_len_outside.empty();
 }
 
 template <typename Type>
@@ -248,6 +324,22 @@ int ServiceInstance::Properties::CompareTo(const Properties &rhs) const {
     if (cmp != 0) {
         return cmp;
     }
+    cmp = compare(ip_addr_inside, rhs.ip_addr_inside);
+    if (cmp != 0) {
+        return cmp;
+    }
+    cmp = compare(ip_addr_outside, rhs.ip_addr_outside);
+    if (cmp != 0) {
+        return cmp;
+    }
+    cmp = compare(ip_prefix_len_inside, rhs.ip_prefix_len_inside);
+    if (cmp != 0) {
+        return cmp;
+    }
+    cmp = compare(ip_prefix_len_outside, rhs.ip_prefix_len_outside);
+    if (cmp != 0) {
+        return cmp;
+    }
     return cmp;
 }
 
@@ -256,7 +348,7 @@ const std::string &ServiceInstance::Properties::ServiceTypeString() const {
         static_cast<ServiceType>(service_type));
 }
 
-/*
+     /*
  * ServiceInstance class
  */
 ServiceInstance::ServiceInstance() {
@@ -292,7 +384,11 @@ bool ServiceInstance::DBEntrySandesh(Sandesh *sresp, std::string &name) const {
 bool ServiceInstance::IsUsable() const {
     return (!properties_.instance_id.is_nil() &&
             !properties_.vmi_inside.is_nil() &&
-            !properties_.vmi_outside.is_nil());
+            !properties_.vmi_outside.is_nil() &&
+            !properties_.ip_addr_inside.empty() &&
+            !properties_.ip_addr_outside.empty() &&
+            !properties_.ip_prefix_len_inside.empty() &&
+            !properties_.ip_prefix_len_outside.empty());
 }
 
 void ServiceInstance::CalculateProperties(

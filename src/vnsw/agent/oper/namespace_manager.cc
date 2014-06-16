@@ -160,17 +160,18 @@ void NamespaceManager::StartNetNS(
     if (netns_cmd_.length() == 0) {
         return;
     }
-    cmd_str << netns_cmd_ << " start ";
+    cmd_str << netns_cmd_ << " start";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
-    cmd_str << " --instance_id " << UuidToString(props.instance_id);
-    cmd_str << " --vmi_inside " << UuidToString(props.vmi_inside);
-    cmd_str << " --vmi_outside " << UuidToString(props.vmi_outside);
+    cmd_str << " " << props.ServiceTypeString();
+    cmd_str << " " << UuidToString(props.instance_id);
+    cmd_str << " " << UuidToString(props.vmi_inside);
+    cmd_str << " " << UuidToString(props.vmi_outside);
     cmd_str << " --ip_inside " << props.ip_addr_inside;
     cmd_str << " --ip_outside " << props.ip_addr_outside;
     cmd_str << " --mac_inside " << props.mac_addr_inside;
     cmd_str << " --mac_outside " << props.mac_addr_outside;
-    cmd_str << " --service_type " << props.ServiceTypeString();
+
 
     NamespaceState *state = new NamespaceState();
     state->set_svc_instance(svc_instance);
@@ -190,11 +191,16 @@ void NamespaceManager::StopNetNS(
     cmd_str << netns_cmd_ << " stop ";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
-    if (props.instance_id.is_nil()) {
+    if (props.instance_id.is_nil() ||
+        props.vmi_inside.is_nil() ||
+        props.vmi_outside.is_nil()) {
         return;
     }
 
-    cmd_str << " --instance_id " << UuidToString(props.instance_id);
+    cmd_str << " " << props.ServiceTypeString();
+    cmd_str << " " << UuidToString(props.instance_id);
+    cmd_str << " " << UuidToString(props.vmi_inside);
+    cmd_str << " " << UuidToString(props.vmi_outside);
 
     NamespaceState *state = new NamespaceState();
     state->set_svc_instance(svc_instance);

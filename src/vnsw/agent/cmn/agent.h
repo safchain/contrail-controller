@@ -345,7 +345,7 @@ public:
     const Peer *ecmp_peer() const {return ecmp_peer_.get();}
     const Peer *vgw_peer() const {return vgw_peer_.get();}
 
-    AgentSignal *agent_signal() const {return agent_signal_;}
+    AgentSignal *agent_signal() const {return agent_signal_.get();}
 
     bool debug() { return debug_; }
     void set_debug(bool debug) { debug_ = debug; }
@@ -557,9 +557,6 @@ public:
     void CreateLifetimeManager();
     void ShutdownLifetimeManager();
 
-    void CreateAgentSignal();
-    void ShutdownAgentSignal();
-
     void SetAgentTaskPolicy();
 
     void InitXenLinkLocalIntf();
@@ -701,7 +698,7 @@ private:
     std::auto_ptr<Peer> ecmp_peer_;
     std::auto_ptr<Peer> vgw_peer_;
 
-    AgentSignal *agent_signal_;
+    std::auto_ptr<AgentSignal> agent_signal_;
 
     IFMapAgentParser *ifmap_parser_;
     bool router_id_configured_;

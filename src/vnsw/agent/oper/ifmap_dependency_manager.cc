@@ -85,6 +85,7 @@ void IFMapDependencyManager::Initialize() {
         "service-template",
         "virtual-machine",
         "virtual-machine-interface",
+        "network-ipam"
     };
 
     // Link table
@@ -133,6 +134,10 @@ void IFMapDependencyManager::Initialize() {
             ("virtual-machine-interface-virtual-network",
              list_of("virtual-machine-interface-virtual-machine"));
     policy->insert(make_pair("virtual-machine-interface", react_vmi));
+
+    ReactionMap react_ipam = map_list_of<string, PropagateList>
+            ("self", list_of("virtual-network-network-ipam"));
+    policy->insert(make_pair("network-ipam", react_ipam));
 }
 
 void IFMapDependencyManager::Terminate() {
@@ -234,7 +239,6 @@ void IFMapDependencyManager::SetObject(IFMapNode *node, DBEntry *entry) {
         state->set_object(entry);
     }
 }
-
 
 /*
  * Reset the association between the IFMapNode and the operation DB
