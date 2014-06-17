@@ -58,6 +58,24 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         agent_->oper_db()->Shutdown();
     }
 
+    std::string GetRandomIp() {
+        std::stringstream ss;
+        for(int i = 0; i != 4; i++) {
+            ss << (rand() % 255) + 1 << ".";
+        }
+        std::string tmp = ss.str();
+        return tmp.substr(0, tmp.size() - 1);
+    }
+
+    std::string GetRandomMac() {
+        std::stringstream ss;
+        for(int i = 0; i != 6; i++) {
+            ss << std::hex << (rand() % 255) + 1 << ":";
+        }
+        std::string tmp = ss.str();
+        return tmp.substr(0, tmp.size() - 1);
+    }
+
     void EncodeNode(pugi::xml_node *parent, const std::string &obj_typename,
                     const std::string &obj_name, const IFMapObject *object) {
         pugi::xml_node node = parent->append_child("node");
@@ -154,6 +172,28 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         return vm_id;
     }
 
+    void ConnectNetworkIpam(const std::string &vnet_name) {
+        boost::uuids::random_generator gen;
+        autogen::IdPermsType id;
+        id.Clear();
+        UuidTypeSet(gen(), &id.uuid);
+
+        autogen::NetworkIpam ipam;
+        ipam.SetProperty("id-perms", &id);
+
+        std::string ipam_name("ipam-");
+        ipam_name.append(vnet_name);
+
+        pugi::xml_node update = config_.append_child("update");
+        EncodeNode(&update, "network-ipam", ipam_name, &ipam);
+
+        update = config_.append_child("update");
+        EncodeLink(&update,
+                   "virtual-network", vnet_name,
+                   "network-ipam", ipam_name,
+                   "virtual-network-network-ipam");
+    }
+
     void ConnectVirtualNetwork(const std::string &vmi_name) {
         boost::uuids::random_generator gen;
         autogen::IdPermsType id;
@@ -173,6 +213,8 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         }
         EncodeNode(&update, "virtual-network", vnet_name, &vnet);
 
+        ConnectNetworkIpam(vnet_name);
+
         update = config_.append_child("update");
         EncodeLink(&update,
                    "virtual-machine-interface", vmi_name,
@@ -180,8 +222,42 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
                    "virtual-machine-interface-virtual-network");
     }
 
+    void ConnectInstanceIp(const std::string &vmi_name,
+                           const std::string &ip_addr) {
+        boost::uuids::random_generator gen;
+        autogen::IdPermsType id;
+        id.Clear();
+        uuid ip_id = gen();
+        UuidTypeSet(ip_id, &id.uuid);
+
+        autogen::InstanceIp ip;
+        ip.SetProperty("id-perms", &id);
+
+        autogen::InstanceIp::StringProperty ip_prop;
+        ip_prop.data = ip_addr;
+        ip.SetProperty("instance-ip-address", &ip_prop);
+
+        pugi::xml_node update = config_.append_child("update");
+        std::string ip_name("ip-");
+        size_t loc = vmi_name.find(':');
+        if (loc != std::string::npos) {
+            ip_name.append(vmi_name.substr(loc + 1));
+        } else {
+            ip_name.append(vmi_name);
+        }
+        EncodeNode(&update, "instance-ip", ip_name, &ip);
+
+        update = config_.append_child("update");
+        EncodeLink(&update,
+                   "instance-ip", ip_name,
+                   "virtual-machine-interface", vmi_name,
+                   "instance-ip-virtual-machine-interface");
+    }
+
     uuid ConnectVirtualMachineInterface(const std::string &vm_name,
-                                        const std::string &vmi_name) {
+                                        const std::string &vmi_name,
+                                        const std::string &vmi_mac_addr,
+                                        const std::string &vmi_ip_addr) {
         boost::uuids::random_generator gen;
         autogen::IdPermsType id;
         id.Clear();
@@ -191,19 +267,24 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         autogen::VirtualMachineInterface vmi;
         vmi.SetProperty("id-perms", &id);
 
+        autogen::MacAddressesType mac_addresses;
+        mac_addresses.mac_address.push_back(vmi_mac_addr);
+        vmi.SetProperty("virtual-machine-interface-mac-addresses", &mac_addresses);
+
         pugi::xml_node update = config_.append_child("update");
         EncodeNode(&update, "virtual-machine-interface", vmi_name, &vmi);
 
         ConnectVirtualNetwork(vmi_name);
+        ConnectInstanceIp(vmi_name, vmi_ip_addr);
 
         update = config_.append_child("update");
         EncodeLink(&update,
                    "virtual-machine-interface", vmi_name,
                    "virtual-machine", vm_name,
                    "virtual-machine-interface-virtual-machine");
+
         return vmi_id;
     }
-
 
   protected:
     std::auto_ptr<Agent> agent_;
@@ -218,6 +299,13 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
 TEST_F(ServiceInstanceIntegrationTest, Config) {
     boost::uuids::random_generator gen;
     uuid svc_id = gen();
+
+    const std::string ip_left = GetRandomIp();
+    const std::string ip_right = GetRandomIp();
+
+    const std::string mac_left = GetRandomMac();
+    const std::string mac_right = GetRandomMac();
+
     EncodeServiceInstance(svc_id, "test-1");
     IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
     parser->ConfigParse(config_, 1);
@@ -238,14 +326,21 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
 
     MessageInit();
     uuid vm_id = ConnectVirtualMachine("test-1");
-    uuid vmi1 = ConnectVirtualMachineInterface("test-1", "left");
-    uuid vmi2 = ConnectVirtualMachineInterface("test-1", "right");
+
+    uuid vmi1 = ConnectVirtualMachineInterface("test-1", "left", mac_left, ip_left);
+    uuid vmi2 = ConnectVirtualMachineInterface("test-1", "right", mac_right, ip_right);
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
 
     EXPECT_EQ(vm_id, svc_instance->properties().instance_id);
     EXPECT_EQ(vmi1, svc_instance->properties().vmi_inside);
     EXPECT_EQ(vmi2, svc_instance->properties().vmi_outside);
+
+    EXPECT_EQ(ip_left, svc_instance->properties().ip_addr_inside);
+    EXPECT_EQ(ip_right, svc_instance->properties().ip_addr_outside);
+
+    EXPECT_EQ(mac_left, svc_instance->properties().mac_addr_inside);
+    EXPECT_EQ(mac_right, svc_instance->properties().mac_addr_outside);
 }
 
 /*
@@ -255,10 +350,15 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
 TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
     static const int kNumTestInstances = 16;
     typedef std::vector<uuid> UuidList;
+    typedef std::vector<std::string> StrList;
     UuidList svc_ids;
     UuidList vm_ids;
     UuidList vmi_inside_ids;
     UuidList vmi_outside_ids;
+    StrList vmi_inside_macs;
+    StrList vmi_outside_macs;
+    StrList vmi_inside_ips;
+    StrList vmi_outside_ips;
 
     for (int i = 0; i < kNumTestInstances; ++i) {
         boost::uuids::random_generator gen;
@@ -273,15 +373,28 @@ TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
 
         vm_ids.push_back(
             ConnectVirtualMachine(name_gen.str()));
+
+        std::string left_ip = GetRandomIp();
+        vmi_inside_ips.push_back(left_ip);
+
+        std::string right_ip = GetRandomIp();
+        vmi_outside_ips.push_back(right_ip);
+
+        std::string left_mac = GetRandomMac();
+        vmi_inside_macs.push_back(left_mac);
+
+        std::string right_mac = GetRandomMac();
+        vmi_outside_macs.push_back(right_mac);
+
         std::string left_id = name_gen.str();
         left_id.append(":left");
         vmi_inside_ids.push_back(
-            ConnectVirtualMachineInterface(name_gen.str(), left_id));
+            ConnectVirtualMachineInterface(name_gen.str(), left_id, left_mac, left_ip));
 
         std::string right_id = name_gen.str();
         right_id.append(":right");
         vmi_outside_ids.push_back(
-            ConnectVirtualMachineInterface(name_gen.str(), right_id));
+            ConnectVirtualMachineInterface(name_gen.str(), right_id, right_mac, right_ip));
 
         IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
         parser->ConfigParse(config_, 1);
@@ -301,6 +414,14 @@ TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
         EXPECT_EQ(vmi_inside_ids.at(i), svc_instance->properties().vmi_inside);
         EXPECT_EQ(vmi_outside_ids.at(i),
                   svc_instance->properties().vmi_outside);
+        EXPECT_EQ(vmi_inside_macs.at(i),
+                  svc_instance->properties().mac_addr_inside);
+        EXPECT_EQ(vmi_outside_macs.at(i),
+                  svc_instance->properties().mac_addr_outside);
+        EXPECT_EQ(vmi_inside_ips.at(i),
+                  svc_instance->properties().ip_addr_inside);
+        EXPECT_EQ(vmi_outside_ips.at(i),
+                  svc_instance->properties().ip_addr_outside);
     }
 }
 
@@ -315,9 +436,15 @@ TEST_F(ServiceInstanceIntegrationTest, RemoveLinks) {
 
     ConnectServiceTemplate("test-3", "tmpl-1");
 
+    const std::string ip_left = GetRandomIp();
+    const std::string ip_right = GetRandomIp();
+
+    const std::string mac_left = GetRandomMac();
+    const std::string mac_right = GetRandomMac();
+
     uuid vm_id = ConnectVirtualMachine("test-3");
-    uuid vmi1 = ConnectVirtualMachineInterface("test-3", "left");
-    uuid vmi2 = ConnectVirtualMachineInterface("test-3", "right");
+    uuid vmi1 = ConnectVirtualMachineInterface("test-3", "left", mac_left, ip_left);
+    uuid vmi2 = ConnectVirtualMachineInterface("test-3", "right", mac_right, ip_right);
 
     IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
     parser->ConfigParse(config_, 1);
@@ -375,9 +502,16 @@ TEST_F(ServiceInstanceIntegrationTest, Delete) {
 
     ConnectServiceTemplate("test-4", "tmpl-1");
 
+    const std::string ip_left = GetRandomIp();
+    const std::string ip_right = GetRandomIp();
+
+    const std::string mac_left = GetRandomMac();
+    const std::string mac_right = GetRandomMac();
+
+
     uuid vm_id = ConnectVirtualMachine("test-4");
-    uuid vmi1 = ConnectVirtualMachineInterface("test-4", "left");
-    uuid vmi2 = ConnectVirtualMachineInterface("test-4", "right");
+    uuid vmi1 = ConnectVirtualMachineInterface("test-4", "left", mac_left, ip_left);
+    uuid vmi2 = ConnectVirtualMachineInterface("test-4", "right", mac_right, ip_right);
 
     IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
     parser->ConfigParse(config_, 1);
@@ -418,6 +552,7 @@ static void TearDown() {
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
+    srand(time(NULL));
     SetUp();
     int result = RUN_ALL_TESTS();
     TearDown();

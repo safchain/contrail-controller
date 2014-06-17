@@ -13,6 +13,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include "base/timer.h"
 #include <cmn/agent_cmn.h>
+#include "cmn/agent_signal.h"
 
 class VmStatData;
 
@@ -29,12 +30,10 @@ public:
 
     void Start();
     void Stop();
-    void HandleSigChild(const boost::system::error_code& error, int sig);
     void ProcessData();
 private:
     bool BuildVmStatsMsg(UveVirtualMachineAgent &uve);
-    void RegisterSigHandler();
-    void InitSigHandler();
+
     void ReadCpuStat();
     void ReadVcpuStat();
     void ReadMemStat();
@@ -71,8 +70,8 @@ private:
     uint32_t pid_;
     UveVirtualMachineStats prev_stats_;
     uint32_t retry_;
-    boost::asio::signal_set signal_;
     DoneCb call_back_;
+
     DISALLOW_COPY_AND_ASSIGN(VmStat);
 };
 #endif // vnsw_agent_vm_stat_h

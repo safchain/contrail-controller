@@ -9,11 +9,13 @@
 #include "db/db.h"
 #include "io/event_manager.h"
 #include "oper/service_instance.h"
+#include "cmn/agent_signal.h"
+
+using boost::uuids::uuid;
 
 NamespaceManager::NamespaceManager(EventManager *evm)
         : si_table_(NULL),
           listener_id_(DBTableBase::kInvalidId),
-          signal_(*(evm->io_service())),
           errors_(*(evm->io_service())) {
     InitSigHandler();
 }
@@ -31,35 +33,45 @@ void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd) {
     }
 }
 
-void NamespaceManager::HandleSigChild(const boost::system::error_code& error, int sig) {
-    if (!error) {
-        int status;
-        while (::waitpid(-1, &status, WNOHANG) > 0);
-        RegisterSigHandler();
+void NamespaceManager::HandleSigChild(const boost::system::error_code &error, int sig, pid_t pid, int status) {
+    switch(sig) {
+    case SIGCHLD:
+        NamespaceState *state = GetState(pid);
+        if (state != NULL) {
+            state->set_status(status);
+        }
+        break;
     }
 }
 
-void NamespaceManager::RegisterSigHandler() {
-    signal_.async_wait(boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2));
+NamespaceState *NamespaceManager::GetState(pid_t pid) {
+    NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
+    if (it != namespace_state_pid_map_.end()) {
+        return it->second;
+    }
+    return NULL;
+}
+
+void NamespaceManager::RemoveState(pid_t pid) {
+    NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
+    if (it != namespace_state_pid_map_.end()) {
+        delete it->second;
+        namespace_state_pid_map_.erase(pid);
+    }
 }
 
 void NamespaceManager::InitSigHandler() {
-    boost::system::error_code ec;
-    signal_.add(SIGCHLD, ec);
-    if (ec) {
-        LOG(ERROR, "SIGCHLD registration failed");
-    }
-    RegisterSigHandler();
+    Agent *agent = Agent::GetInstance();
+    AgentSignal::SignalChildHandler handler = boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2, _3, _4);
+    agent->agent_signal()->RegisterHandler(handler);
 }
 
 void NamespaceManager::Terminate() {
     si_table_->Unregister(listener_id_);
-    boost::system::error_code ec;
-    signal_.cancel(ec);
 }
 
 void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
-                      size_t read_bytes) {
+                      size_t read_bytes, pid_t pid) {
     if (read_bytes) {
         errors_data_ << rx_buff_;
     }
@@ -71,20 +83,28 @@ void NamespaceManager::ReadErrors(const boost::system::error_code &ec,
         std::string errors = errors_data_.str();
         if (errors.length() > 0) {
             LOG(ERROR, errors);
+
+            NamespaceState *state = GetState(pid);
+            if (state != NULL) {
+                state->set_last_errrors(errors);
+            }
         }
         errors_data_.clear();
     } else {
         bzero(rx_buff_, sizeof(rx_buff_));
         boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
                 boost::bind(&NamespaceManager::ReadErrors, this, boost::asio::placeholders::error,
-                        boost::asio::placeholders::bytes_transferred));
+                        boost::asio::placeholders::bytes_transferred, pid));
     }
 }
 
-void NamespaceManager::ExecCmd(const std::string cmd) {
+void NamespaceManager::ExecCmd(const std::string &cmd,
+        NamespaceState *state) {
     std::vector<std::string> argv;
 
     LOG(DEBUG, "Start a NetNS command: " << cmd);
+
+    state->set_last_cmd(cmd);
 
     argv.push_back("/bin/sh");
     argv.push_back("-c");
@@ -101,7 +121,8 @@ void NamespaceManager::ExecCmd(const std::string cmd) {
         return;
     }
 
-    if (vfork() == 0) {
+    pid_t pid = vfork();
+    if (pid == 0) {
         close(err[0]);
         dup2(err[1], STDERR_FILENO);
         close(err[1]);
@@ -116,6 +137,9 @@ void NamespaceManager::ExecCmd(const std::string cmd) {
     }
     close(err[1]);
 
+    state->set_pid(pid);
+    namespace_state_pid_map_.insert(NamespaceStatePidPair(pid, state));
+
     boost::system::error_code ec;
     errors_.assign(::dup(err[0]), ec);
     close(err[0]);
@@ -126,7 +150,7 @@ void NamespaceManager::ExecCmd(const std::string cmd) {
     bzero(rx_buff_, sizeof(rx_buff_));
     boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
             boost::bind(&NamespaceManager::ReadErrors, this, boost::asio::placeholders::error,
-                    boost::asio::placeholders::bytes_transferred));
+                    boost::asio::placeholders::bytes_transferred, pid));
 }
 
 void NamespaceManager::StartNetNS(
@@ -136,15 +160,25 @@ void NamespaceManager::StartNetNS(
     if (netns_cmd_.length() == 0) {
         return;
     }
-    cmd_str << netns_cmd_ << " start ";
+    cmd_str << netns_cmd_ << " start";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
-    cmd_str << " --instance_id " << UuidToString(props.instance_id);
-    cmd_str << " --vmi_inside " << UuidToString(props.vmi_inside);
-    cmd_str << " --vmi_outside " << UuidToString(props.vmi_outside);
-    cmd_str << " --service_type " << props.ServiceTypeString();
+    cmd_str << " " << props.ServiceTypeString();
+    cmd_str << " " << UuidToString(props.instance_id);
+    cmd_str << " " << UuidToString(props.vmi_inside);
+    cmd_str << " " << UuidToString(props.vmi_outside);
+    cmd_str << " --ip_inside " << props.ip_addr_inside;
+    cmd_str << " --ip_outside " << props.ip_addr_outside;
+    cmd_str << " --mac_inside " << props.mac_addr_inside;
+    cmd_str << " --mac_outside " << props.mac_addr_outside;
 
-    ExecCmd(cmd_str.str());
+
+    NamespaceState *state = new NamespaceState();
+    state->set_svc_instance(svc_instance);
+
+
+
+    ExecCmd(cmd_str.str(), state);
 }
 
 void NamespaceManager::StopNetNS(
@@ -157,13 +191,21 @@ void NamespaceManager::StopNetNS(
     cmd_str << netns_cmd_ << " stop ";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
-    if (props.instance_id.is_nil()) {
+    if (props.instance_id.is_nil() ||
+        props.vmi_inside.is_nil() ||
+        props.vmi_outside.is_nil()) {
         return;
     }
 
-    cmd_str << " --instance_id " << UuidToString(props.instance_id);
+    cmd_str << " " << props.ServiceTypeString();
+    cmd_str << " " << UuidToString(props.instance_id);
+    cmd_str << " " << UuidToString(props.vmi_inside);
+    cmd_str << " " << UuidToString(props.vmi_outside);
 
-    ExecCmd(cmd_str.str());
+    NamespaceState *state = new NamespaceState();
+    state->set_svc_instance(svc_instance);
+
+    ExecCmd(cmd_str.str(), state);
 }
 
 void NamespaceManager::EventObserver(
@@ -176,4 +218,10 @@ void NamespaceManager::EventObserver(
     } else {
         StopNetNS(svc_instance);
     }
+}
+
+/*
+ * NamespaceState class
+ */
+NamespaceState::NamespaceState() : pid_(0), svc_instance_(NULL), status_(0) {
 }
