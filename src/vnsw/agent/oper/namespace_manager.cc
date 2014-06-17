@@ -209,11 +209,10 @@ void NamespaceManager::EventObserver(
     DBTablePartBase *db_part, DBEntryBase *entry) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
 
-    bool usable = !svc_instance->IsDeleted() && svc_instance->IsUsable();
-    if (usable) {
-        StartNetNS(svc_instance);
-    } else {
+    if (svc_instance->IsDeleted()) {
         StopNetNS(svc_instance);
+    } else if (svc_instance->IsUsable()) {
+        StartNetNS(svc_instance);
     }
 }
 
