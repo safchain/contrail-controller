@@ -349,10 +349,15 @@ Agent::Agent() :
 
     SetAgentTaskPolicy();
     CreateLifetimeManager();
+
+    agent_signal_.reset(AgentObjectFactory::Create<AgentSignal>(new EventManager()));
+    agent_signal_->Initialize();
 }
 
 Agent::~Agent() {
     uve_.reset(NULL);
+
+    ShutdownAgentSignal();
 
     delete event_mgr_;
     event_mgr_ = NULL;
