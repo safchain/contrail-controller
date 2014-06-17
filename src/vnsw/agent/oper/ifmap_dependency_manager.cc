@@ -85,7 +85,7 @@ void IFMapDependencyManager::Initialize() {
         "service-template",
         "virtual-machine",
         "virtual-machine-interface",
-        "network-ipam"
+        "virtual-network-network-ipam"
     };
 
     // Link table
@@ -137,7 +137,7 @@ void IFMapDependencyManager::Initialize() {
 
     ReactionMap react_ipam = map_list_of<string, PropagateList>
             ("self", list_of("virtual-network-network-ipam"));
-    policy->insert(make_pair("network-ipam", react_ipam));
+    policy->insert(make_pair("virtual-network-network-ipam", react_ipam));
 }
 
 void IFMapDependencyManager::Terminate() {

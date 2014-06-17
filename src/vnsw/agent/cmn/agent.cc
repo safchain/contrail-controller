@@ -357,7 +357,7 @@ Agent::Agent() :
 Agent::~Agent() {
     uve_.reset(NULL);
 
-    ShutdownAgentSignal();
+    agent_signal_->Terminate();
 
     delete event_mgr_;
     event_mgr_ = NULL;

@@ -110,7 +110,7 @@ static IFMapNode *FindAndSetVirtualMachine(
     return NULL;
 }
 
-static IFMapNode *FindNetworkIpam(DBGraph *graph, IFMapNode *vn_node) {
+static IFMapNode *FindNetworkSubnets(DBGraph *graph, IFMapNode *vn_node) {
     for (DBGraphVertex::adjacency_iterator iter = vn_node->begin(graph);
              iter != vn_node->end(graph); ++iter) {
         IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
@@ -118,10 +118,7 @@ static IFMapNode *FindNetworkIpam(DBGraph *graph, IFMapNode *vn_node) {
         if (IsNodeType(adj, "virtual-network-network-ipam")) {
             for (DBGraphVertex::adjacency_iterator iter = adj->begin(graph);
                          iter != adj->end(graph); ++iter) {
-                IFMapNode *adj2 = static_cast<IFMapNode *>(iter.operator->());
-                if (IsNodeType(adj2, "network-ipam")) {
-                    return  adj2;
-                }
+                return static_cast<IFMapNode *>(iter.operator->());
             }
         }
     }
@@ -210,7 +207,7 @@ static void FindAndSetInterfaces(
             properties->ip_addr_outside = FindInterfaceIp(graph, adj);
         }
 
-        IFMapNode *ipam_node = FindNetworkIpam(graph, vn_node);
+        IFMapNode *ipam_node = FindNetworkSubnets(graph, vn_node);
         if (ipam_node == NULL) {
             continue;
         }

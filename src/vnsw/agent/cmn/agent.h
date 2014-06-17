@@ -561,13 +561,10 @@ public:
 
     void InitXenLinkLocalIntf();
     void InitCollector();
-    void CreateDBTables();
-    void CreateDBClients();
     void CreateVrf();
     void CreateNextHops();
     void CreateInterfaces();
     void InitPeers();
-    void InitModules();
     void InitDone();
 
     void Init(AgentParam *param);

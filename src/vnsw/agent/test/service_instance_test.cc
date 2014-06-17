@@ -41,11 +41,19 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
     }
 
     void SetUp() {
-        agent_->set_cfg(new AgentConfig(agent_.get()));
-        agent_->set_oper_db(new OperDB(agent_.get()));
-        agent_->CreateDBTables();
-        agent_->CreateDBClients();
-        agent_->InitModules();
+        AgentConfig *config = new AgentConfig(agent_.get());
+        agent_->set_cfg(config);
+        OperDB *oper_db = new OperDB(agent_.get());
+        agent_->set_oper_db(oper_db);
+
+        DB *db = agent_->GetDB();
+        config->CreateDBTables(db);
+        oper_db->CreateDBTables(db);
+        config->RegisterDBClients(db);
+        oper_db->RegisterDBClients();
+        config->Init();
+        oper_db->Init();
+
         MessageInit();
     }
 
@@ -187,9 +195,32 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         pugi::xml_node update = config_.append_child("update");
         EncodeNode(&update, "network-ipam", ipam_name, &ipam);
 
+
+        autogen::VirtualNetworkNetworkIpam attr;
+        autogen::VnSubnetsType subnet_list;
+        subnet_list.Clear();
+        autogen::IpamSubnetType subnet;
+        subnet.Clear();
+        subnet.subnet.ip_prefix = "192.168.0.0";
+        subnet.subnet.ip_prefix_len = 24;
+        subnet_list.ipam_subnets.push_back(subnet);
+        attr.SetData(&subnet_list);
+
+        update = config_.append_child("update");
+        std::stringstream attrname_gen;
+        attrname_gen << "attr(" << ipam_name << "," << vnet_name << ")";
+        EncodeNode(&update, "virtual-network-network-ipam", attrname_gen.str(),
+                   &attr);
+
         update = config_.append_child("update");
         EncodeLink(&update,
                    "virtual-network", vnet_name,
+                   "virtual-network-network-ipam", attrname_gen.str(),
+                   "virtual-network-network-ipam");
+
+        update = config_.append_child("update");
+        EncodeLink(&update,
+                   "virtual-network-network-ipam", attrname_gen.str(),
                    "network-ipam", ipam_name,
                    "virtual-network-network-ipam");
     }
