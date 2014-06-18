@@ -10,6 +10,7 @@
 #include "db/db_table.h"
 #include "cmn/agent_signal.h"
 
+class AgentSignal;
 class DB;
 class EventManager;
 class ServiceInstance;
@@ -24,7 +25,7 @@ public:
     typedef std::pair<const pid_t, NamespaceState *> NamespaceStatePidPair;
     static const size_t kBufLen = 4098;
 
-    NamespaceManager(EventManager *evm);
+    NamespaceManager(EventManager *evm, AgentSignal *signal);
 
     void Initialize(DB *database, const std::string &netns_cmd);
     void Terminate();
@@ -35,8 +36,8 @@ private:
     void ExecCmd(const std::string &cmd, NamespaceState *state);
     void StartNetNS(const ServiceInstance *svc_instance);
     void StopNetNS(const ServiceInstance *svc_instance);
-    void RegisterSigHandler();
-    void InitSigHandler();
+
+    void InitSigHandler(AgentSignal *signal);
     void ReadErrors(const boost::system::error_code &ec, size_t read_bytes, pid_t pid);
     NamespaceState *GetState(pid_t pid);
     void RemoveState(pid_t pid);

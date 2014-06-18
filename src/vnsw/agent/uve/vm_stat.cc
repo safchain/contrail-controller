@@ -17,7 +17,6 @@
 #include <sstream>
 #include <fstream>
 #include <uve/agent_uve.h>
-#include "cmn/agent_signal.h"
 
 using namespace boost::uuids;
 using namespace boost::asio;

@@ -172,7 +172,7 @@ public:
     VrfAssignTable *GetVrfAssignTable() {return vrf_assign_table_;}
     VxLanTable *GetVxLanTable() { return vxlan_table_;}
     ServiceInstanceTable *service_instance_table() {
-        return service_instance_table_.get();
+        return service_instance_table_;
     }
     int GetSandeshPort() { return sandesh_port_;}
 
@@ -445,7 +445,7 @@ public:
     }
 
     void SetServiceInstanceTable(ServiceInstanceTable *table) {
-        service_instance_table_.reset(table);
+        service_instance_table_= table;
     }
 
     void SetMirrorPort(uint16_t mirr_port) {
@@ -650,7 +650,7 @@ private:
     MirrorTable *mirror_table_;
     VrfAssignTable *vrf_assign_table_;
     VxLanTable *vxlan_table_;
-    std::auto_ptr<ServiceInstanceTable> service_instance_table_;
+    ServiceInstanceTable *service_instance_table_;
 
     // Mirror config table
     MirrorCfgTable *mirror_cfg_table_;

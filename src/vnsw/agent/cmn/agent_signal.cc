@@ -13,11 +13,14 @@ AgentSignal::AgentSignal(EventManager *evm) : signal_(*(evm->io_service())) {
     Initialize();
 }
 
+AgentSignal::~AgentSignal() {
+}
+
 void AgentSignal::RegisterHandler(SignalHandler handler) {
     default_callbacks_.push_back(handler);
 }
 
-void AgentSignal::RegisterHandler(SignalChildHandler handler) {
+void AgentSignal::RegisterChildHandler(SignalChildHandler handler) {
     sigchld_callbacks_.push_back(handler);
 }
 

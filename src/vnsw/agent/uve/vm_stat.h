@@ -13,7 +13,6 @@
 #include <boost/uuid/uuid_io.hpp>
 #include "base/timer.h"
 #include <cmn/agent_cmn.h>
-#include "cmn/agent_signal.h"
 
 class VmStatData;
 

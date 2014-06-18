@@ -64,16 +64,16 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
     }
 
     void TearDown() {
-        DB *database = agent_->GetDB();
-
-        agent_->oper_db()->Shutdown();
-
-        agent_->cfg()->Shutdown();
-
-        IFMapTable::ClearTables(database);
         task_util::WaitForIdle();
 
+        agent_->oper_db()->Shutdown();
+        agent_->cfg()->Shutdown();
+
+        DB *database = agent_->GetDB();
+        IFMapTable::ClearTables(database);
+
         db_util::Clear(database);
+        task_util::WaitForIdle();
     }
 
     std::string GetRandomIp() {

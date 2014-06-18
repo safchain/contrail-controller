@@ -13,11 +13,11 @@
 
 using boost::uuids::uuid;
 
-NamespaceManager::NamespaceManager(EventManager *evm)
+NamespaceManager::NamespaceManager(EventManager *evm, AgentSignal *signal)
         : si_table_(NULL),
           listener_id_(DBTableBase::kInvalidId),
           errors_(*(evm->io_service())) {
-    InitSigHandler();
+    InitSigHandler(signal);
 }
 
 void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd) {
@@ -60,10 +60,9 @@ void NamespaceManager::RemoveState(pid_t pid) {
     }
 }
 
-void NamespaceManager::InitSigHandler() {
-    Agent *agent = Agent::GetInstance();
-    AgentSignal::SignalChildHandler handler = boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2, _3, _4);
-    agent->agent_signal()->RegisterHandler(handler);
+void NamespaceManager::InitSigHandler(AgentSignal *signal) {
+    signal->RegisterChildHandler(
+        boost::bind(&NamespaceManager::HandleSigChild, this, _1, _2, _3, _4));
 }
 
 void NamespaceManager::Terminate() {

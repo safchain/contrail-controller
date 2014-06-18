@@ -160,7 +160,7 @@ OperDB::OperDB(Agent *agent)
                   agent->GetDB(), agent->cfg()->cfg_graph())),
           namespace_manager_(
                   AgentObjectFactory::Create<NamespaceManager>(
-                      agent->GetEventManager())),
+                      agent->GetEventManager(), agent->agent_signal())),
           domain_config_(new DomainConfig()) {
 }
 

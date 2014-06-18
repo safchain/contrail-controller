@@ -14,6 +14,7 @@
 #include <vnc_cfg_types.h>
 
 #include <cmn/agent_param.h>
+#include "cmn/agent_signal.h"
 #include <cfg/cfg_init.h>
 #include <cfg/cfg_mirror.h>
 #include <cfg/discovery_agent.h>
@@ -358,6 +359,7 @@ Agent::~Agent() {
     uve_.reset(NULL);
 
     agent_signal_->Terminate();
+    agent_signal_.reset();
 
     delete event_mgr_;
     event_mgr_ = NULL;
