@@ -75,4 +75,5 @@ void AgentSignal::Initialize() {
 void AgentSignal::Terminate() {
     boost::system::error_code ec;
     signal_.cancel(ec);
+    signal_.clear(ec);
 }

@@ -119,8 +119,7 @@ void OperDB::CreateDBTables(DB *db) {
     agent_->SetVrfAssignTable(vassign_table);
     vassign_table->set_agent(agent_);
 
-    DomainConfig *domain_config_table = new DomainConfig();
-    agent_->SetDomainConfigTable(domain_config_table);
+    agent_->SetDomainConfigTable(domain_config_.get());
 
     VxLanTable *vxlan_table;
     vxlan_table = static_cast<VxLanTable *>(db->CreateTable("db.vxlan.0"));
@@ -134,8 +133,8 @@ void OperDB::CreateDBTables(DB *db) {
     agent_->SetServiceInstanceTable(si_table);
     si_table->Initialize(agent_->cfg()->cfg_graph(), dependency_manager_.get());
 
-    multicast_ = std::auto_ptr<MulticastHandler>(new MulticastHandler(agent_));
-    global_vrouter_ = std::auto_ptr<GlobalVrouter> (new GlobalVrouter(this));
+    multicast_.reset(new MulticastHandler(agent_));
+    global_vrouter_.reset(new GlobalVrouter(this));
 }
 
 void OperDB::Init() {
@@ -161,61 +160,31 @@ OperDB::OperDB(Agent *agent)
                   agent->GetDB(), agent->cfg()->cfg_graph())),
           namespace_manager_(
                   AgentObjectFactory::Create<NamespaceManager>(
-                      agent->GetEventManager())) {
+                      agent->GetEventManager())),
+          domain_config_(new DomainConfig()) {
 }
 
 OperDB::~OperDB() {
-
 }
 
 void OperDB::Shutdown() {
+    namespace_manager_->Terminate();
+    dependency_manager_->Terminate();
+    multicast_->Terminate();
     global_vrouter_.reset();
 
-    agent_->GetDB()->RemoveTable(agent_->GetVnTable());
-    delete agent_->GetVnTable();
-    agent_->SetVnTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetVmTable());
-    delete agent_->GetVmTable();
-    agent_->SetVmTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetSgTable());
-    delete agent_->GetSgTable();
-    agent_->SetSgTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetInterfaceTable());
-    delete agent_->GetInterfaceTable();
-    agent_->SetInterfaceTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetVrfTable());
-    delete agent_->GetVrfTable();
-    agent_->SetVrfTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetMplsTable());
-    delete agent_->GetMplsTable();
-    agent_->SetMplsTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetNextHopTable());
-    delete agent_->GetNextHopTable();
-    agent_->SetNextHopTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetMirrorTable());
-    delete agent_->GetMirrorTable();
-    agent_->SetMirrorTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetVrfAssignTable());
-    delete agent_->GetVrfAssignTable();
-    agent_->SetVrfAssignTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->GetVxLanTable());
-    delete agent_->GetVxLanTable();
-    agent_->SetVxLanTable(NULL);
-
-    agent_->GetDB()->RemoveTable(agent_->service_instance_table());
-    agent_->SetServiceInstanceTable(NULL);
-
-    delete agent_->GetDomainConfigTable();
-    agent_->SetDomainConfigTable(NULL);
+    agent_->GetInterfaceTable()->Clear();
+    agent_->GetNextHopTable()->Clear();
+    agent_->GetVrfTable()->Clear();
+    agent_->GetVnTable()->Clear();
+    agent_->GetSgTable()->Clear();
+    agent_->GetVmTable()->Clear();
+    agent_->GetMplsTable()->Clear();
+    agent_->GetAclTable()->Clear();
+    agent_->GetMirrorTable()->Clear();
+    agent_->GetVrfAssignTable()->Clear();
+    agent_->GetVxLanTable()->Clear();
+    agent_->service_instance_table()->Clear();
 }
 
 void OperDB::DeleteRoutes() {

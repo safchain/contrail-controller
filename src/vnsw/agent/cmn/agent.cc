@@ -350,8 +350,8 @@ Agent::Agent() :
     SetAgentTaskPolicy();
     CreateLifetimeManager();
 
-    agent_signal_.reset(AgentObjectFactory::Create<AgentSignal>(new EventManager()));
-    agent_signal_->Initialize();
+    agent_signal_.reset(
+        AgentObjectFactory::Create<AgentSignal>(event_mgr_));
 }
 
 Agent::~Agent() {

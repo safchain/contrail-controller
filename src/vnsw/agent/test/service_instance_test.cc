@@ -10,6 +10,7 @@
 #include "testing/gunit.h"
 
 #include "base/test/task_test_util.h"
+#include "db/test/db_test_util.h"
 #include "cfg/cfg_init.h"
 #include "oper/operdb_init.h"
 
@@ -63,7 +64,16 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
     }
 
     void TearDown() {
+        DB *database = agent_->GetDB();
+
         agent_->oper_db()->Shutdown();
+
+        agent_->cfg()->Shutdown();
+
+        IFMapTable::ClearTables(database);
+        task_util::WaitForIdle();
+
+        db_util::Clear(database);
     }
 
     std::string GetRandomIp() {
@@ -270,12 +280,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
 
         pugi::xml_node update = config_.append_child("update");
         std::string ip_name("ip-");
-        size_t loc = vmi_name.find(':');
-        if (loc != std::string::npos) {
-            ip_name.append(vmi_name.substr(loc + 1));
-        } else {
-            ip_name.append(vmi_name);
-        }
+        ip_name.append(vmi_name);
         EncodeNode(&update, "instance-ip", ip_name, &ip);
 
         update = config_.append_child("update");
@@ -300,7 +305,8 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
 
         autogen::MacAddressesType mac_addresses;
         mac_addresses.mac_address.push_back(vmi_mac_addr);
-        vmi.SetProperty("virtual-machine-interface-mac-addresses", &mac_addresses);
+        vmi.SetProperty("virtual-machine-interface-mac-addresses",
+                        &mac_addresses);
 
         pugi::xml_node update = config_.append_child("update");
         EncodeNode(&update, "virtual-machine-interface", vmi_name, &vmi);
@@ -358,8 +364,10 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
     MessageInit();
     uuid vm_id = ConnectVirtualMachine("test-1");
 
-    uuid vmi1 = ConnectVirtualMachineInterface("test-1", "left", mac_left, ip_left);
-    uuid vmi2 = ConnectVirtualMachineInterface("test-1", "right", mac_right, ip_right);
+    uuid vmi1 = ConnectVirtualMachineInterface("test-1", "left", mac_left,
+                                               ip_left);
+    uuid vmi2 = ConnectVirtualMachineInterface("test-1", "right", mac_right,
+                                               ip_right);
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
 
@@ -420,12 +428,14 @@ TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
         std::string left_id = name_gen.str();
         left_id.append(":left");
         vmi_inside_ids.push_back(
-            ConnectVirtualMachineInterface(name_gen.str(), left_id, left_mac, left_ip));
+            ConnectVirtualMachineInterface(name_gen.str(), left_id, left_mac,
+                                           left_ip));
 
         std::string right_id = name_gen.str();
         right_id.append(":right");
         vmi_outside_ids.push_back(
-            ConnectVirtualMachineInterface(name_gen.str(), right_id, right_mac, right_ip));
+            ConnectVirtualMachineInterface(name_gen.str(), right_id, right_mac,
+                                           right_ip));
 
         IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
         parser->ConfigParse(config_, 1);
@@ -474,8 +484,10 @@ TEST_F(ServiceInstanceIntegrationTest, RemoveLinks) {
     const std::string mac_right = GetRandomMac();
 
     uuid vm_id = ConnectVirtualMachine("test-3");
-    uuid vmi1 = ConnectVirtualMachineInterface("test-3", "left", mac_left, ip_left);
-    uuid vmi2 = ConnectVirtualMachineInterface("test-3", "right", mac_right, ip_right);
+    uuid vmi1 = ConnectVirtualMachineInterface("test-3", "left", mac_left,
+                                               ip_left);
+    uuid vmi2 = ConnectVirtualMachineInterface("test-3", "right", mac_right,
+                                               ip_right);
 
     IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
     parser->ConfigParse(config_, 1);

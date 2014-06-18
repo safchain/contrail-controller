@@ -9,6 +9,7 @@
 
 class Agent;
 class DB;
+class DomainConfig;
 class GlobalVrouter;
 class IFMapDependencyManager;
 class MulticastHandler;
@@ -46,6 +47,7 @@ private:
     std::auto_ptr<GlobalVrouter> global_vrouter_;
     std::auto_ptr<IFMapDependencyManager> dependency_manager_;
     std::auto_ptr<NamespaceManager> namespace_manager_;
+    std::auto_ptr<DomainConfig> domain_config_;
 
     DISALLOW_COPY_AND_ASSIGN(OperDB);
 };

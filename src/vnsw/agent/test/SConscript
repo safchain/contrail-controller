@@ -2,8 +2,6 @@
 # Copyright (c) 2013 Juniper Networks, Inc. All rights reserved.
 #
 
-# -*- mode: python; -*-
-
 import sys
 if sys.platform == 'darwin':
     Return()
@@ -21,9 +19,11 @@ env.Library('ifmap_test', lib_srcs)
 env.Library('control_node_mock', 'control_node_mock.cc');
 env.Library('agent_test_buildinfo', 'test_buildinfo.cc')
 env.Append(LIBPATH = [
-        '../../../base/test'
+        '../../../base/test',
+        '../../../db/test',
         ])
 env.Append(LIBS = [
+        'dbtest',
         'task_test',
         ])
 
@@ -100,3 +100,7 @@ agent_suite.append(service_instance_test)
 test = env.TestSuite('agent-test', agent_suite)
 env.Alias('agent:agent_test', test)
 Return('agent_suite')
+
+# Local Variables:
+# mode: python
+# End:

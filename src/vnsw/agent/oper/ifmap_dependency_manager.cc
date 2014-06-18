@@ -10,6 +10,7 @@
 #include "base/task.h"
 #include "base/task_trigger.h"
 #include "db/db.h"
+#include "db/db_table_partition.h"
 #include "db/db_entry.h"
 #include "ifmap/ifmap_agent_table.h"
 #include "ifmap/ifmap_dependency_tracker.h"
@@ -81,6 +82,7 @@ void IFMapDependencyManager::Initialize() {
     typedef IFMapDependencyTracker::ReactionMap ReactionMap;
 
     static const char *ifmap_types[] = {
+        "instance-ip",
         "service-instance",
         "service-template",
         "virtual-machine",
@@ -131,13 +133,29 @@ void IFMapDependencyManager::Initialize() {
 
     ReactionMap react_vmi = map_list_of<string, PropagateList>
             ("self", list_of("virtual-machine-interface-virtual-machine"))
+            ("instance-ip-virtual-machine-interface",
+             list_of("virtual-machine-interface-virtual-machine"))
             ("virtual-machine-interface-virtual-network",
              list_of("virtual-machine-interface-virtual-machine"));
     policy->insert(make_pair("virtual-machine-interface", react_vmi));
 
+    ReactionMap react_ip = map_list_of<string, PropagateList>
+            ("self", list_of("instance-ip-virtual-machine-interface"));
+    policy->insert(make_pair("instance-ip", react_ip));
+
+    ReactionMap react_vnet = map_list_of<string, PropagateList>
+            ("virtual-network-network-ipam",
+             list_of("virtual-machine-interface-virtual-network"));
+    policy->insert(make_pair("virtual-network", react_vnet));
+
+    ReactionMap react_subnet = map_list_of<string, PropagateList>
+            ("self", list_of("virtual-network-network-ipam"))
+            ("virtual-network-network-ipam", list_of("nil"));
+    policy->insert(make_pair("virtual-network-network-ipam", react_subnet));
+
     ReactionMap react_ipam = map_list_of<string, PropagateList>
-            ("self", list_of("virtual-network-network-ipam"));
-    policy->insert(make_pair("virtual-network-network-ipam", react_ipam));
+            ("virtual-network-network-ipam", list_of("nil"));
+    policy->insert(make_pair("network-ipam", react_ipam));
 }
 
 void IFMapDependencyManager::Terminate() {
@@ -145,6 +163,7 @@ void IFMapDependencyManager::Terminate() {
          iter != table_map_.end(); ++iter) {
         DBTable *table = static_cast<DBTable *>(
             database_->FindTable(iter->first));
+        DBTable::DBStateClear(table, iter->second);
         table->Unregister(iter->second);
     }
 }
