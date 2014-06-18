@@ -150,7 +150,7 @@ void NamespaceManager::ExecCmd(const std::string &cmd,
 }
 
 void NamespaceManager::StartNetNS(
-    const ServiceInstance *svc_instance) {
+    const ServiceInstance *svc_instance, NamespaceState *state) {
     std::stringstream cmd_str;
 
     if (netns_cmd_.length() == 0) {
@@ -163,22 +163,16 @@ void NamespaceManager::StartNetNS(
     cmd_str << " " << UuidToString(props.instance_id);
     cmd_str << " " << UuidToString(props.vmi_inside);
     cmd_str << " " << UuidToString(props.vmi_outside);
-    cmd_str << " --ip_inside " << props.ip_addr_inside;
-    cmd_str << " --ip_outside " << props.ip_addr_outside;
-    cmd_str << " --mac_inside " << props.mac_addr_inside;
-    cmd_str << " --mac_outside " << props.mac_addr_outside;
-
-
-    NamespaceState *state = new NamespaceState();
-    state->set_svc_instance(svc_instance);
-
-
+    cmd_str << " --vmi-left-ip " << props.ip_addr_inside;
+    cmd_str << " --vmi-right-ip " << props.ip_addr_outside;
+    cmd_str << " --vmi-left-mac " << props.mac_addr_inside;
+    cmd_str << " --vmi-right-mac " << props.mac_addr_outside;
 
     ExecCmd(cmd_str.str(), state);
 }
 
 void NamespaceManager::StopNetNS(
-    const ServiceInstance *svc_instance) {
+    const ServiceInstance *svc_instance, NamespaceState *state) {
     std::stringstream cmd_str;
 
     if (netns_cmd_.length() == 0) {
@@ -198,9 +192,6 @@ void NamespaceManager::StopNetNS(
     cmd_str << " " << UuidToString(props.vmi_inside);
     cmd_str << " " << UuidToString(props.vmi_outside);
 
-    NamespaceState *state = new NamespaceState();
-    state->set_svc_instance(svc_instance);
-
     ExecCmd(cmd_str.str(), state);
 }
 
@@ -208,15 +199,42 @@ void NamespaceManager::EventObserver(
     DBTablePartBase *db_part, DBEntryBase *entry) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
 
-    if (svc_instance->IsDeleted()) {
-        StopNetNS(svc_instance);
+    NamespaceState *state = static_cast<NamespaceState *>
+        (svc_instance->GetState(db_part->parent(), listener_id_));
+
+    if (svc_instance->IsDeleted() ||
+        (! svc_instance->IsUsable() && state != NULL)) {
+        StopNetNS(svc_instance, state);
+
+        svc_instance->ClearState(db_part->parent(), listener_id_);
+        delete state;
     } else if (svc_instance->IsUsable()) {
-        StartNetNS(svc_instance);
+        if (state == NULL) {
+            state = new NamespaceState();
+            state->set_svc_instance(svc_instance);
+            svc_instance->SetState(db_part->parent(), listener_id_, state);
+
+            StartNetNS(svc_instance, state);
+        } else if (state->status() != 0) {
+            /*
+             * a previous instance has been started but is in a fail state,
+             * so try to restart it
+             */
+            state->Clear();
+            StartNetNS(svc_instance, state);
+        }
     }
 }
 
 /*
  * NamespaceState class
  */
-NamespaceState::NamespaceState() : pid_(0), svc_instance_(NULL), status_(0) {
+NamespaceState::NamespaceState() : DBState(), pid_(0), svc_instance_(NULL), status_(0) {
+}
+
+void NamespaceState::Clear() {
+    pid_ = 0;
+    status_ = 0;
+    last_errors_.empty();
+    last_cmd_.empty();
 }

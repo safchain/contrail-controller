@@ -9,6 +9,7 @@
 #include <boost/uuid/uuid.hpp>
 #include "db/db_table.h"
 #include "cmn/agent_signal.h"
+#include "db/db_entry.h"
 
 class AgentSignal;
 class DB;
@@ -34,9 +35,9 @@ public:
 
 private:
     void ExecCmd(const std::string &cmd, NamespaceState *state);
-    void StartNetNS(const ServiceInstance *svc_instance);
-    void StopNetNS(const ServiceInstance *svc_instance);
-
+    void StartNetNS(const ServiceInstance *svc_instance, NamespaceState *state);
+    void StopNetNS(const ServiceInstance *svc_instance, NamespaceState *state);
+    void RegisterSigHandler();
     void InitSigHandler(AgentSignal *signal);
     void ReadErrors(const boost::system::error_code &ec, size_t read_bytes, pid_t pid);
     NamespaceState *GetState(pid_t pid);
@@ -55,8 +56,8 @@ private:
     char rx_buff_[kBufLen];
     NamespaceStatePidMap namespace_state_pid_map_;
 };
+class NamespaceState : public DBState {
 
-class NamespaceState {
 public:
     NamespaceState();
 
@@ -74,6 +75,8 @@ public:
 
     void set_last_cmd(const std::string &cmd) { last_cmd_ = cmd; }
     std::string last_cmd() const { return last_cmd_; }
+
+    void Clear();
 
 private:
     pid_t pid_;
