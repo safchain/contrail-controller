@@ -106,9 +106,6 @@ void NamespaceManager::ExecCmd(const std::string &cmd,
 
     state->set_last_cmd(cmd);
 
-    argv.push_back("/bin/sh");
-    argv.push_back("-c");
-
     boost::split(argv, cmd, boost::is_any_of(" "), boost::token_compress_on);
 
     std::vector<const char *> c_argv(argv.size() + 1);
@@ -133,7 +130,7 @@ void NamespaceManager::ExecCmd(const std::string &cmd,
         execvp(c_argv[0], (char **) c_argv.data());
         perror("execvp");
 
-        exit(127);
+        _exit(127);
     }
     close(err[1]);
 
@@ -160,7 +157,7 @@ void NamespaceManager::StartNetNS(
     if (netns_cmd_.length() == 0) {
         return;
     }
-    cmd_str << netns_cmd_ << " start";
+    cmd_str << netns_cmd_ << " create";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
     cmd_str << " " << props.ServiceTypeString();
@@ -188,7 +185,7 @@ void NamespaceManager::StopNetNS(
     if (netns_cmd_.length() == 0) {
         return;
     }
-    cmd_str << netns_cmd_ << " stop ";
+    cmd_str << netns_cmd_ << " destroy";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
     if (props.instance_id.is_nil() ||
@@ -212,11 +209,10 @@ void NamespaceManager::EventObserver(
     DBTablePartBase *db_part, DBEntryBase *entry) {
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
 
-    bool usable = !svc_instance->IsDeleted() && svc_instance->IsUsable();
-    if (usable) {
-        StartNetNS(svc_instance);
-    } else {
+    if (svc_instance->IsDeleted()) {
         StopNetNS(svc_instance);
+    } else if (svc_instance->IsUsable()) {
+        StartNetNS(svc_instance);
     }
 }
 
