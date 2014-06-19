@@ -28,7 +28,7 @@ class NamespaceManagerTest : public ::testing::Test {
     NamespaceManagerTest() :
             dependency_manager_(
                 new IFMapDependencyManager(&database_, &graph_)),
-            ns_manager_(new NamespaceManager(&evm_)),
+            ns_manager_(new NamespaceManager(&evm_, NULL)),
             si_table_(NULL) {
     }
 

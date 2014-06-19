@@ -119,7 +119,6 @@ void OperDB::CreateDBTables(DB *db) {
     agent_->set_vrf_assign_table(vassign_table);
     vassign_table->set_agent(agent_);
 
-    DomainConfig *domain_config_table = ;
     agent_->set_domain_config_table(domain_config_.get());
 
     VxLanTable *vxlan_table;
@@ -131,7 +130,7 @@ void OperDB::CreateDBTables(DB *db) {
     ServiceInstanceTable *si_table =
             static_cast<ServiceInstanceTable *>(
                 db->CreateTable("db.service-instance.0"));
-    agent_->SetServiceInstanceTable(si_table);
+    agent_->set_service_instance_table(si_table);
     si_table->Initialize(agent_->cfg()->cfg_graph(), dependency_manager_.get());
 
     multicast_.reset(new MulticastHandler(agent_));
@@ -146,7 +145,7 @@ void OperDB::Init() {
     if (agent_->params()) {
         netns_cmd = agent_->params()->si_netns_command();
     }
-    namespace_manager_->Initialize(agent_->GetDB(), netns_cmd);
+    namespace_manager_->Initialize(agent_->db(), netns_cmd);
 }
 
 void OperDB::RegisterDBClients() {
@@ -158,10 +157,10 @@ OperDB::OperDB(Agent *agent)
         : agent_(agent),
           dependency_manager_(
               AgentObjectFactory::Create<IFMapDependencyManager>(
-                  agent->GetDB(), agent->cfg()->cfg_graph())),
+                  agent->db(), agent->cfg()->cfg_graph())),
           namespace_manager_(
                   AgentObjectFactory::Create<NamespaceManager>(
-                      agent->GetEventManager(), agent->agent_signal())),
+                      agent->event_manager(), agent->agent_signal())),
           domain_config_(new DomainConfig()) {
 }
 

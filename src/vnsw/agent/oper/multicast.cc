@@ -79,8 +79,8 @@ void MulticastHandler::Register() {
 }
 
 void MulticastHandler::Terminate() {
-    agent_->GetVnTable()->Unregister(vn_listener_id_);
-    agent_->GetInterfaceTable()->Unregister(interface_listener_id_);
+    agent_->vn_table()->Unregister(vn_listener_id_);
+    agent_->interface_table()->Unregister(interface_listener_id_);
 }
 
 /*

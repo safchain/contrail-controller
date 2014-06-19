@@ -141,7 +141,12 @@ public:
 
     void Shutdown() { }
 
+    /**
+     * Deprecated API
+     * DO NOT USE
+     */
     static Agent *GetInstance() {return singleton_;}
+
     static const std::string &NullString() {return null_string_;};
     static const uint8_t *vrrp_mac() {return vrrp_mac_;}
     static const std::string &BcastMac() {return bcast_mac_;};
@@ -358,18 +363,17 @@ public:
     XmppInit *dns_xmpp_init(uint8_t idx) const {
         return dns_xmpp_init_[idx];
     }
-<<<<<<< HEAD
 
-    void SetServiceInstanceTable(ServiceInstanceTable *table) {
+    ServiceInstanceTable *service_instance_table() {
+        return service_instance_table_;
+    }
+
+    void set_service_instance_table(ServiceInstanceTable *table) {
         service_instance_table_= table;
     }
 
-    void SetMirrorPort(uint16_t mirr_port) {
-        mirror_src_udp_port_ = mirr_port;
-=======
     void set_dns_xmpp_init(XmppInit *xmpp, uint8_t idx) {
         dns_xmpp_init_[idx] = xmpp;
->>>>>>> github/master
     }
 
     XmppClient *dns_xmpp_client(uint8_t idx) const {
@@ -471,17 +475,9 @@ public:
         metadata_server_port_ = port;
     }
 
-<<<<<<< HEAD
-    /**
-     * Deprecated API
-     * DO NOT USE
-     */
-    static Agent *GetInstance() {return singleton_;}
-=======
     // Protocol objects
     ArpProto *GetArpProto() { return arp_proto_; }
     void SetArpProto(ArpProto *proto) { arp_proto_ = proto; }
->>>>>>> github/master
 
     DhcpProto *GetDhcpProto() { return dhcp_proto_; }
     void SetDhcpProto(DhcpProto *proto) { dhcp_proto_ = proto; }
@@ -489,26 +485,11 @@ public:
     DnsProto *GetDnsProto() { return dns_proto_; }
     void SetDnsProto(DnsProto *proto) { dns_proto_ = proto; }
 
-<<<<<<< HEAD
-    void CreateLifetimeManager();
-    void ShutdownLifetimeManager();
-
-    void SetAgentTaskPolicy();
-
-    void InitXenLinkLocalIntf();
-    void InitCollector();
-    void CreateVrf();
-    void CreateNextHops();
-    void CreateInterfaces();
-    void InitPeers();
-    void InitDone();
-=======
     IcmpProto *GetIcmpProto() { return icmp_proto_; }
     void SetIcmpProto(IcmpProto *proto) { icmp_proto_ = proto; }
 
     FlowProto *GetFlowProto() { return flow_proto_; }
     void SetFlowProto(FlowProto *proto) { flow_proto_ = proto; }
->>>>>>> github/master
 
     // Peer objects
     const Peer *local_peer() const {return local_peer_.get();}

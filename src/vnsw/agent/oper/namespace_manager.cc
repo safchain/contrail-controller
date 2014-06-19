@@ -17,7 +17,9 @@ NamespaceManager::NamespaceManager(EventManager *evm, AgentSignal *signal)
         : si_table_(NULL),
           listener_id_(DBTableBase::kInvalidId),
           errors_(*(evm->io_service())) {
-    InitSigHandler(signal);
+    if (signal) {
+        InitSigHandler(signal);
+    }
 }
 
 void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd) {

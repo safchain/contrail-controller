@@ -210,8 +210,7 @@ void AgentConfig::RegisterDBClients(DB *db) {
     assert(cfg_route_table_);
 
     cfg_service_template_table_ = (static_cast<IFMapAgentTable *>
-        (IFMapTable::FindTable(agent_->GetDB(),
-                               "service-template")));
+        (IFMapTable::FindTable(agent_->db(), "service-template")));
     assert(cfg_service_template_table_);
 
     cfg_interface_client_->Init();

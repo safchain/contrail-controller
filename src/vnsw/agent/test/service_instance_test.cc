@@ -47,7 +47,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         OperDB *oper_db = new OperDB(agent_.get());
         agent_->set_oper_db(oper_db);
 
-        DB *db = agent_->GetDB();
+        DB *db = agent_->db();
         config->CreateDBTables(db);
         oper_db->CreateDBTables(db);
         config->RegisterDBClients(db);
@@ -65,7 +65,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         agent_->cfg()->Shutdown();
         task_util::WaitForIdle();
 
-        DB *database = agent_->GetDB();
+        DB *database = agent_->db();
         db_util::Clear(database);
         task_util::WaitForIdle();
 
@@ -352,7 +352,7 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
     const std::string mac_right = GetRandomMac();
 
     EncodeServiceInstance(svc_id, "test-1");
-    IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
+    IFMapAgentParser *parser = agent_->ifmap_parser();
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
 
@@ -448,7 +448,7 @@ TEST_F(ServiceInstanceIntegrationTest, MultipleInstances) {
             ConnectVirtualMachineInterface(name_gen.str(), right_id, right_mac,
                                            right_ip));
 
-        IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
+        IFMapAgentParser *parser = agent_->ifmap_parser();
         parser->ConfigParse(config_, 1);
     }
 
@@ -500,7 +500,7 @@ TEST_F(ServiceInstanceIntegrationTest, RemoveLinks) {
     uuid vmi2 = ConnectVirtualMachineInterface("test-3", "right", mac_right,
                                                ip_right);
 
-    IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
+    IFMapAgentParser *parser = agent_->ifmap_parser();
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
 
@@ -567,7 +567,7 @@ TEST_F(ServiceInstanceIntegrationTest, Delete) {
     uuid vmi1 = ConnectVirtualMachineInterface("test-4", "left", mac_left, ip_left);
     uuid vmi2 = ConnectVirtualMachineInterface("test-4", "right", mac_right, ip_right);
 
-    IFMapAgentParser *parser = agent_->GetIfMapAgentParser();
+    IFMapAgentParser *parser = agent_->ifmap_parser();
     parser->ConfigParse(config_, 1);
     task_util::WaitForIdle();
 
