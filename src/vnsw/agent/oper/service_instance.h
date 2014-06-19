@@ -64,8 +64,8 @@ public:
         std::string ip_addr_inside;
         std::string ip_addr_outside;
 
-        std::string ip_prefix_len_inside;
-        std::string ip_prefix_len_outside;
+        int ip_prefix_len_inside;
+        int ip_prefix_len_outside;
     };
 
     ServiceInstance();

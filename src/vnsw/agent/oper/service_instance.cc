@@ -116,10 +116,7 @@ static IFMapNode *FindNetworkSubnets(DBGraph *graph, IFMapNode *vn_node) {
         IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
 
         if (IsNodeType(adj, "virtual-network-network-ipam")) {
-            for (DBGraphVertex::adjacency_iterator iter = adj->begin(graph);
-                         iter != adj->end(graph); ++iter) {
-                return static_cast<IFMapNode *>(iter.operator->());
-            }
+            return adj;
         }
     }
     return NULL;
@@ -220,11 +217,11 @@ static void FindAndSetInterfaces(
             if (netname == si_properties.left_virtual_network &&
                 SubNetContainsIpv4(subnets.ipam_subnets[i],
                         properties->ip_addr_inside)) {
-                properties->ip_prefix_len_inside = boost::lexical_cast<std::string>(prefix_len);
-            } else if (netname == si_properties.left_virtual_network &&
+                properties->ip_prefix_len_inside = prefix_len;
+            } else if (netname == si_properties.right_virtual_network &&
                        SubNetContainsIpv4(subnets.ipam_subnets[i],
                                 properties->ip_addr_outside)) {
-                properties->ip_prefix_len_outside = boost::lexical_cast<std::string>(prefix_len);
+                properties->ip_prefix_len_outside = prefix_len;
             }
         }
     }
@@ -284,8 +281,8 @@ void ServiceInstance::Properties::Clear() {
     mac_addr_outside.empty();
     ip_addr_inside.empty();
     ip_addr_outside.empty();
-    ip_prefix_len_inside.empty();
-    ip_prefix_len_outside.empty();
+    ip_prefix_len_inside = -1;
+    ip_prefix_len_outside = -1;
 }
 
 template <typename Type>
@@ -384,8 +381,8 @@ bool ServiceInstance::IsUsable() const {
             !properties_.vmi_outside.is_nil() &&
             !properties_.ip_addr_inside.empty() &&
             !properties_.ip_addr_outside.empty() &&
-            !properties_.ip_prefix_len_inside.empty() &&
-            !properties_.ip_prefix_len_outside.empty());
+            !(properties_.ip_prefix_len_inside == -1) &&
+            !(properties_.ip_prefix_len_outside == -1));
 }
 
 void ServiceInstance::CalculateProperties(

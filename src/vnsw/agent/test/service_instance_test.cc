@@ -196,7 +196,8 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         return vm_id;
     }
 
-    void ConnectNetworkIpam(const std::string &vnet_name) {
+    void ConnectNetworkIpam(const std::string &vnet_name,
+                            const std::string &ip_addr) {
         boost::uuids::random_generator gen;
         autogen::IdPermsType id;
         id.Clear();
@@ -217,7 +218,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         subnet_list.Clear();
         autogen::IpamSubnetType subnet;
         subnet.Clear();
-        subnet.subnet.ip_prefix = "192.168.0.0";
+        subnet.subnet.ip_prefix = ip_addr;
         subnet.subnet.ip_prefix_len = 24;
         subnet_list.ipam_subnets.push_back(subnet);
         attr.SetData(&subnet_list);
@@ -241,7 +242,8 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
                    "virtual-network-network-ipam");
     }
 
-    void ConnectVirtualNetwork(const std::string &vmi_name) {
+    void ConnectVirtualNetwork(const std::string &vmi_name,
+                               const std::string &ip_addr) {
         boost::uuids::random_generator gen;
         autogen::IdPermsType id;
         id.Clear();
@@ -260,7 +262,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         }
         EncodeNode(&update, "virtual-network", vnet_name, &vnet);
 
-        ConnectNetworkIpam(vnet_name);
+        ConnectNetworkIpam(vnet_name, ip_addr);
 
         update = config_.append_child("update");
         EncodeLink(&update,
@@ -317,7 +319,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         pugi::xml_node update = config_.append_child("update");
         EncodeNode(&update, "virtual-machine-interface", vmi_name, &vmi);
 
-        ConnectVirtualNetwork(vmi_name);
+        ConnectVirtualNetwork(vmi_name, vmi_ip_addr);
         ConnectInstanceIp(vmi_name, vmi_ip_addr);
 
         update = config_.append_child("update");
@@ -383,6 +385,9 @@ TEST_F(ServiceInstanceIntegrationTest, Config) {
 
     EXPECT_EQ(ip_left, svc_instance->properties().ip_addr_inside);
     EXPECT_EQ(ip_right, svc_instance->properties().ip_addr_outside);
+
+    EXPECT_EQ(24, svc_instance->properties().ip_prefix_len_inside);
+    EXPECT_EQ(24, svc_instance->properties().ip_prefix_len_outside);
 
     EXPECT_EQ(mac_left, svc_instance->properties().mac_addr_inside);
     EXPECT_EQ(mac_right, svc_instance->properties().mac_addr_outside);
