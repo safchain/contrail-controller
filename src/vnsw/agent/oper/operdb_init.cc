@@ -60,71 +60,72 @@ void OperDB::CreateDBTables(DB *db) {
     InterfaceTable *intf_table;
     intf_table = static_cast<InterfaceTable *>(db->CreateTable("db.interface.0"));
     assert(intf_table);
-    agent_->SetInterfaceTable(intf_table);
+    agent_->set_interface_table(intf_table);
     intf_table->Init(this);
     intf_table->set_agent(agent_);
 
     NextHopTable *nh_table;
     nh_table = static_cast<NextHopTable *>(db->CreateTable("db.nexthop.0"));
     assert(nh_table);
-    agent_->SetNextHopTable(nh_table);
+    agent_->set_nexthop_table(nh_table);
     nh_table->set_agent(agent_);
 
     VrfTable *vrf_table;
     vrf_table = static_cast<VrfTable *>(db->CreateTable("db.vrf.0"));
     assert(vrf_table);
-    agent_->SetVrfTable(vrf_table);
+    agent_->set_vrf_table(vrf_table);
     vrf_table->set_agent(agent_);
 
     VmTable *vm_table;
     vm_table = static_cast<VmTable *>(db->CreateTable("db.vm.0"));
     assert(vm_table);
-    agent_->SetVmTable(vm_table);
+    agent_->set_vm_table(vm_table);
     vm_table->set_agent(agent_);
 
     SgTable *sg_table;
     sg_table = static_cast<SgTable *>(db->CreateTable("db.sg.0"));
     assert(sg_table);
-    agent_->SetSgTable(sg_table);
+    agent_->set_sg_table(sg_table);
     sg_table->set_agent(agent_);
 
     VnTable *vn_table;
     vn_table = static_cast<VnTable *>(db->CreateTable("db.vn.0"));
     assert(vn_table);
-    agent_->SetVnTable(vn_table);
+    agent_->set_vn_table(vn_table);
     vn_table->set_agent(agent_);
 
     MplsTable *mpls_table;
     mpls_table = static_cast<MplsTable *>(db->CreateTable("db.mpls.0"));
     assert(mpls_table);
-    agent_->SetMplsTable(mpls_table);
+    agent_->set_mpls_table(mpls_table);
     mpls_table->set_agent(agent_);
 
     AclTable *acl_table;
     acl_table = static_cast<AclTable *>(db->CreateTable("db.acl.0"));
     assert(acl_table);
-    agent_->SetAclTable(acl_table);
+    agent_->set_acl_table(acl_table);
     acl_table->set_agent(agent_);
 
     MirrorTable *mirror_table;
     mirror_table = static_cast<MirrorTable *>
                    (db->CreateTable("db.mirror_table.0"));
     assert(mirror_table);
-    agent_->SetMirrorTable(mirror_table);
+    agent_->set_mirror_table(mirror_table);
     mirror_table->set_agent(agent_);
 
     VrfAssignTable *vassign_table = static_cast<VrfAssignTable *>
                    (db->CreateTable("db.vrf_assign.0"));
     assert(vassign_table);
-    agent_->SetVrfAssignTable(vassign_table);
+    agent_->set_vrf_assign_table(vassign_table);
     vassign_table->set_agent(agent_);
 
-    agent_->SetDomainConfigTable(domain_config_.get());
+    DomainConfig *domain_config_table = ;
+    agent_->set_domain_config_table(domain_config_.get());
 
     VxLanTable *vxlan_table;
     vxlan_table = static_cast<VxLanTable *>(db->CreateTable("db.vxlan.0"));
     assert(vxlan_table);
-    agent_->SetVxLanTable(vxlan_table);
+    agent_->set_vxlan_table(vxlan_table);
     vxlan_table->set_agent(agent_);
 
     ServiceInstanceTable *si_table =
@@ -173,20 +174,20 @@ void OperDB::Shutdown() {
     multicast_->Terminate();
     global_vrouter_.reset();
 
-    agent_->GetInterfaceTable()->Clear();
-    agent_->GetNextHopTable()->Clear();
-    agent_->GetVrfTable()->Clear();
-    agent_->GetVnTable()->Clear();
-    agent_->GetSgTable()->Clear();
-    agent_->GetVmTable()->Clear();
-    agent_->GetMplsTable()->Clear();
-    agent_->GetAclTable()->Clear();
-    agent_->GetMirrorTable()->Clear();
-    agent_->GetVrfAssignTable()->Clear();
-    agent_->GetVxLanTable()->Clear();
+    agent_->acl_table()->Clear();
+    agent_->interface_table()->Clear();
+    agent_->mirror_table()->Clear();
+    agent_->mpls_table()->Clear();
+    agent_->nexthop_table()->Clear();
     agent_->service_instance_table()->Clear();
+    agent_->sg_table()->Clear();
+    agent_->vm_table()->Clear();
+    agent_->vn_table()->Clear();
+    agent_->vrf_assign_table()->Clear();
+    agent_->vrf_table()->Clear();
+    agent_->vxlan_table()->Clear();
 }
 
 void OperDB::DeleteRoutes() {
-    agent_->GetVrfTable()->DeleteRoutes();
+    agent_->vrf_table()->DeleteRoutes();
 }

@@ -1463,18 +1463,34 @@ class DBInterface(object):
         else:
             # Assigned by address manager
             alloc_pools = None
+
+        dhcp_option_list = None
         if subnet_q['dns_nameservers'] != attr.ATTR_NOT_SPECIFIED:
-            dns_server = subnet_q['dns_nameservers']
-        else:
-            dns_server = None
+            dhcp_options=[]
+            for dns_server in subnet_q['dns_nameservers']:
+                dhcp_options.append(DhcpOptionType(dhcp_option_name='6',
+                                                   dhcp_option_value=dns_server))
+            if dhcp_options:
+                dhcp_option_list = DhcpOptionsListType(dhcp_options)
+
+        host_route_list = None
+        if subnet_q['host_routes'] != attr.ATTR_NOT_SPECIFIED:
+            host_routes=[]
+            for host_route in subnet_q['host_routes']:
+                host_routes.append(RouteType(prefix=host_route['destination'],
+                                             next_hop=host_route['nexthop']))
+            if host_routes:
+                host_route_list = RouteTableType(host_routes)
 
         dhcp_config = subnet_q['enable_dhcp']
         subnet_vnc = IpamSubnetType(subnet=SubnetType(pfx, pfx_len),
                                     default_gateway=default_gw,
                                     enable_dhcp=dhcp_config,
-                                    dns_nameservers=dns_server,
+                                    dns_nameservers=None,
                                     allocation_pools=alloc_pools,
-                                    addr_from_start=True)
+                                    addr_from_start=True,
+                                    dhcp_option_list=dhcp_option_list,
+                                    host_routes=host_route_list)
 
         return subnet_vnc
     #end _subnet_neutron_to_vnc
@@ -1519,22 +1535,26 @@ class DBInterface(object):
         sn_q_dict['allocation_pools'] = allocation_pools
 
         sn_q_dict['enable_dhcp'] = subnet_vnc.get_enable_dhcp()
-        nameservers = subnet_vnc.get_dns_nameservers()
-        if nameservers is None or not nameservers:
-            sn_q_dict['dns_nameservers'] = [{'address': '169.254.169.254',
-                                             'subnet_id': sn_id}]
-        else:
-            nameserver_dict_list = list()
-            for nameserver in nameservers:
-                nameserver_entry = {'address': nameserver,
-                                    'subnet_id': sn_id}
-                nameserver_dict_list.append(nameserver_entry)
-            sn_q_dict['dns_nameservers'] = nameserver_dict_list
 
-        # TODO get from ipam_obj
-        sn_q_dict['routes'] = [{'destination': 'TODO-destination',
-                               'nexthop': 'TODO-nexthop',
-                               'subnet_id': sn_id}]
+        nameserver_dict_list = list()
+        dhcp_option_list = subnet_vnc.get_dhcp_option_list()
+        if dhcp_option_list:
+            for dhcp_option in dhcp_option_list.dhcp_option:
+                if dhcp_option.get_dhcp_option_name() == '6':
+                    nameserver_entry = {'address': dhcp_option.get_dhcp_option_value(),
+                                        'subnet_id': sn_id}
+                    nameserver_dict_list.append(nameserver_entry)
+        sn_q_dict['dns_nameservers'] = nameserver_dict_list
+
+        host_route_dict_list = list()
+        host_routes = subnet_vnc.get_host_routes()
+        if host_routes:
+            for host_route in host_routes.route:
+                host_route_entry = {'destination': host_route.get_prefix(),
+                                    'nexthop': host_route.get_next_hop(),
+                                    'subnet_id': sn_id}
+                host_route_dict_list.append(host_route_entry)
+        sn_q_dict['routes'] = host_route_dict_list
 
         if net_obj.is_shared:
             sn_q_dict['shared'] = True
@@ -1772,6 +1792,10 @@ class DBInterface(object):
                                                id_perms=id_perms)
             port_obj.uuid = port_uuid
             port_obj.set_virtual_network(net_obj)
+            if ('mac_address' in port_q and port_q['mac_address']):
+                mac_addrs_obj = MacAddressesType()
+                mac_addrs_obj.set_mac_address(port_q['mac_address'])
+                port_obj.set_virtual_machine_interface_mac_addresses(mac_addrs_obj)
         else:  # READ/UPDATE/DELETE
             port_obj = self._virtual_machine_interface_read(
                 port_id=port_q['id'], fields=['instance_ip_back_refs',
@@ -2606,9 +2630,9 @@ class DBInterface(object):
             for p in rports:
                 for ip in p['fixed_ips']:
                     if ip['subnet_id'] == subnet_id:
-                        exc_info = {'type': 'RouterInUse',
-                                    'message': "Router %s still has ports " % rtr_uuid}
-                        bottle.abort(409, json.dumps(exc_info))
+                        exc_info = {'type': 'BadRequest',
+                                    'message': "Router already has a port on subnet %s" % subnet_id}
+                        bottle.abort(400, json.dumps(exc_info))
                     sub_id = ip['subnet_id']
                     subnet = self.subnet_read(sub_id)
                     cidr = subnet['cidr']
@@ -2902,6 +2926,9 @@ class DBInterface(object):
         # if ip address passed then use it
         req_ip_addrs = []
         req_ip_subnets = []
+        port_q['id'] = port_id
+        port_obj = self._port_neutron_to_vnc(port_q, None, UPDATE)
+        net_id = port_obj.get_virtual_network_refs()[0]['uuid']
         fixed_ips = port_q.get('fixed_ips', [])
         for fixed_ip in fixed_ips:
             if 'ip_address' in fixed_ip:
@@ -2913,12 +2940,9 @@ class DBInterface(object):
             elif 'subnet_id' in fixed_ip:
                 req_ip_subnets.append(fixed_ip['subnet_id'])
 
-        port_q['id'] = port_id
-        port_obj = self._port_neutron_to_vnc(port_q, None, UPDATE)
         self._virtual_machine_interface_update(port_obj)
 
         if req_ip_addrs or req_ip_subnets:
-            net_id = port_obj.get_virtual_network_refs()[0]['uuid']
             net_obj = self._network_read(net_id)
             # initialize ip object
             if net_obj.get_network_ipam_refs():
@@ -3033,8 +3057,9 @@ class DBInterface(object):
         all_project_ids = []
 
         # TODO used to find dhcp server field. support later...
-        if 'device_owner' in filters:
-            return ret_q_ports
+        if (filters.get('device_owner') == 'network:dhcp' or
+            'network:dhcp' in filters.get('device_owner', [])):
+             return ret_q_ports
 
         if not 'device_id' in filters:
             # Listing from back references
@@ -3114,7 +3139,8 @@ class DBInterface(object):
     #end port_list
 
     def port_count(self, filters=None):
-        if 'device_owner' in filters:
+        if (filters.get('device_owner') == 'network:dhcp' or
+            'network:dhcp' in filters.get('device_owner', [])):
             return 0
 
         if 'tenant_id' in filters:

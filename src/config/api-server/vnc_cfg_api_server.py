@@ -104,6 +104,12 @@ _ACTION_RESOURCES = [
 ]
 
 
+@bottle.error(400)
+def error_400(err):
+    return err.body
+# end error_400
+
+
 @bottle.error(403)
 def error_403(err):
     return err.body
@@ -182,6 +188,8 @@ class VncApiServer(VncApiServerGen):
             vnc_cfg_types.VirtualMachineInterfaceServer
         self._resource_classes['virtual-network'] = \
             vnc_cfg_types.VirtualNetworkServer
+        self._resource_classes['network-policy'] = \
+            vnc_cfg_types.NetworkPolicyServer
         self._resource_classes['network-ipam'] = \
             vnc_cfg_types.NetworkIpamServer
         self._resource_classes['virtual-DNS'] = vnc_cfg_types.VirtualDnsServer
@@ -426,7 +434,7 @@ class VncApiServer(VncApiServerGen):
             (ok, put_result) = r_class.http_put(obj_uuid, fq_name, obj_dict, self._db_conn)
             if not ok:
                 (code, msg) = put_result
-                self.config_object_error(id, None, obj_type, 'ref_update', msg)
+                self.config_object_error(obj_uuid, None, obj_type, 'ref_update', msg)
                 abort(code, msg)
         obj_type = obj_type.replace('-', '_')
         try:

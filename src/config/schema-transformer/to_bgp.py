@@ -883,6 +883,7 @@ class VirtualNetworkST(DictST):
         sp_list = prule.src_ports
         daddr_list = prule.dst_addresses
         dp_list = prule.dst_ports
+        rule_uuid = prule.get_rule_uuid()
 
         arule_proto = self.protocol_policy_to_acl(prule.protocol)
         if arule_proto is None:
@@ -959,7 +960,7 @@ class VirtualNetworkST(DictST):
                         match = MatchConditionType(arule_proto,
                                                    saddr_match, sp,
                                                    daddr_match, dp)
-                        acl = AclRuleType(match, action)
+                        acl = AclRuleType(match, action, rule_uuid)
                         result_acl_rule_list.append(acl)
                         if ((prule.direction == "<>") and
                                 (svn != dvn or sp != dp)):
@@ -975,7 +976,7 @@ class VirtualNetworkST(DictST):
                             else:
                                 raction.assign_routing_instance = None
 
-                            acl = AclRuleType(rmatch, raction)
+                            acl = AclRuleType(rmatch, raction, rule_uuid)
                             result_acl_rule_list.append(acl)
                     # end for dp
                 # end for sp
@@ -1087,7 +1088,7 @@ class SecurityGroupST(DictST):
     def __init__(self, name):
         self.name = name
         self.obj = _vnc_lib.security_group_read(fq_name_str=name)
-        if self.obj.get_security_group_id() is None:
+        if not self.obj.get_security_group_id():
             # TODO handle overflow + check alloc'd id is not in use
             sg_id_num = self._sg_id_allocator.alloc(name)
             self.obj.set_security_group_id(sg_id_num)
@@ -1163,6 +1164,7 @@ class SecurityGroupST(DictST):
     def policy_to_acl_rule(self, prule):
         ingress_acl_rule_list = []
         egress_acl_rule_list = []
+        rule_uuid = prule.get_rule_uuid()
 
         # convert policy proto input(in str) to acl proto (num)
         if prule.protocol.isdigit():
@@ -1192,7 +1194,7 @@ class SecurityGroupST(DictST):
                         match = MatchConditionType(arule_proto,
                                                    saddr_match, sp,
                                                    daddr_match, dp)
-                        acl = AclRuleType(match, action)
+                        acl = AclRuleType(match, action, rule_uuid)
                         acl_rule_list.append(acl)
                     # end for dp
                 # end for daddr
@@ -2226,7 +2228,12 @@ class VirtualMachineInterfaceST(DictST):
         vm_id = get_vm_id_from_interface(vmi_obj)
         if vm_id is None:
             return network_set
-        vm_obj = _vnc_lib.virtual_machine_read(id=vm_id)
+        try:
+            vm_obj = _vnc_lib.virtual_machine_read(id=vm_id)
+        except NoIdError:
+            _sandesh._logger.debug("NoIdError while reading virtual machine " +
+                                   vm_id)
+            return network_set
         vm_si_refs = vm_obj.get_service_instance_refs()
         if not vm_si_refs:
             return network_set
@@ -2477,6 +2484,11 @@ class SchemaTransformer(object):
         SecurityGroupST._sg_id_allocator = IndexAllocator(
             _zookeeper_client, _SECURITY_GROUP_ID_ALLOC_PATH,
             _SECURITY_GROUP_MAX_ID)
+        # 0 is not a valid sg id any more. So, if it was previously allocated,
+        # delete it and reserve it
+        if SecurityGroupST._sg_id_allocator.read(0) != '__reserved__':
+            SecurityGroupST._sg_id_allocator.delete(0)
+        SecurityGroupST._sg_id_allocator.reserve(0, '__reserved__')
         VirtualNetworkST._rt_allocator = IndexAllocator(
             _zookeeper_client, _BGP_RTGT_ALLOC_PATH, _BGP_RTGT_MAX_ID)
 
@@ -2606,6 +2618,13 @@ class SchemaTransformer(object):
         if sg:
             sg.update_policy_entries(entries)
     # end add_security_group_entries
+
+    def delete_security_group_entries(self, idents, meta):
+        sg_name = idents['security-group']
+        sg = SecurityGroupST.get(sg_name)
+        if sg:
+            sg.update_policy_entries(None)
+    # end delete_security_group_entries
 
     def add_network_policy_entries(self, idents, meta):
         # Network policy entries arrived or modified
@@ -3038,7 +3057,8 @@ class SchemaTransformer(object):
                         PortType(-1, -1), rule.match_condition.dst_address,
                         PortType(-1, -1))
 
-                    acl = AclRuleType(match, ActionListType("deny"))
+                    acl = AclRuleType(match, ActionListType("deny"),
+                                      rule.get_rule_uuid())
                     acl_list.append(acl)
 
                     match = MatchConditionType(
@@ -3046,7 +3066,8 @@ class SchemaTransformer(object):
                         PortType(-1, -1), rule.match_condition.src_address,
                         PortType(-1, -1))
 
-                    acl = AclRuleType(match, ActionListType("deny"))
+                    acl = AclRuleType(match, ActionListType("deny"),
+                                      rule.get_rule_uuid())
                     acl_list.append(acl)
                 # end for rule
 

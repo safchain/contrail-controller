@@ -16,6 +16,7 @@ struct VmInterfaceConfigData;
 struct VmInterfaceIpAddressData;
 struct VmInterfaceOsOperStateData;
 struct VmInterfaceMirrorData;
+class OperDhcpOptions;
 
 /////////////////////////////////////////////////////////////////////////////
 // Definition for VmInterface
@@ -214,11 +215,13 @@ public:
         vn_(NULL), ip_addr_(0), mdata_addr_(0), subnet_bcast_addr_(0),
         vm_mac_(""), policy_enabled_(false), mirror_entry_(NULL),
         mirror_direction_(MIRROR_RX_TX), cfg_name_(""), fabric_port_(true),
-        need_linklocal_ip_(false), do_dhcp_relay_(false), vm_name_(),
+        need_linklocal_ip_(false), dhcp_enable_(true),
+        do_dhcp_relay_(false), vm_name_(),
         vm_project_uuid_(nil_uuid()), vxlan_id_(0), layer2_forwarding_(true),
         ipv4_forwarding_(true), mac_set_(false), vlan_id_(kInvalidVlanId),
-        parent_(NULL), sg_list_(), floating_ip_list_(), service_vlan_list_(),
-        static_route_list_(), vrf_assign_rule_list_(), vrf_assign_acl_(NULL) {
+        parent_(NULL), oper_dhcp_options_(), sg_list_(), floating_ip_list_(),
+        service_vlan_list_(), static_route_list_(), vrf_assign_rule_list_(),
+        vrf_assign_acl_(NULL) {
         ipv4_active_ = false;
         l2_active_ = false;
     }
@@ -232,12 +235,13 @@ public:
         vn_(NULL), ip_addr_(addr), mdata_addr_(0), subnet_bcast_addr_(0),
         vm_mac_(mac), policy_enabled_(false), mirror_entry_(NULL),
         mirror_direction_(MIRROR_RX_TX), cfg_name_(""), fabric_port_(true),
-        need_linklocal_ip_(false), do_dhcp_relay_(false), vm_name_(vm_name),
+        need_linklocal_ip_(false), dhcp_enable_(true),
+        do_dhcp_relay_(false), vm_name_(vm_name),
         vm_project_uuid_(vm_project_uuid), vxlan_id_(0),
         layer2_forwarding_(true), ipv4_forwarding_(true), mac_set_(false),
-        vlan_id_(vlan_id), parent_(parent), sg_list_(), floating_ip_list_(),
-        service_vlan_list_(), static_route_list_(), vrf_assign_rule_list_(),
-        vrf_assign_acl_(NULL) {
+        vlan_id_(vlan_id), parent_(parent), oper_dhcp_options_(), sg_list_(),
+        floating_ip_list_(), service_vlan_list_(), static_route_list_(),
+        vrf_assign_rule_list_(), vrf_assign_acl_(NULL) {
         ipv4_active_ = false;
         l2_active_ = false;
     }
@@ -268,6 +272,10 @@ public:
     const std::string &vm_mac() const { return vm_mac_; }
     bool fabric_port() const { return fabric_port_; }
     bool need_linklocal_ip() const { return  need_linklocal_ip_; }
+    bool dhcp_enable_config() const { return dhcp_enable_; }
+    void set_dhcp_enable_config(bool dhcp_enable) {
+        dhcp_enable_= dhcp_enable;
+    }
     bool do_dhcp_relay() const { return do_dhcp_relay_; }
     int vxlan_id() const { return vxlan_id_; }
     bool layer2_forwarding() const { return layer2_forwarding_; }
@@ -277,6 +285,7 @@ public:
     const std::string &cfg_name() const { return cfg_name_; }
     uint16_t vlan_id() const { return vlan_id_; }
     const Interface *parent() const { return parent_.get(); }
+    const OperDhcpOptions &oper_dhcp_options() const { return oper_dhcp_options_; }
 
     Interface::MirrorDirection mirror_direction() const {
         return mirror_direction_;
@@ -360,7 +369,7 @@ private:
     bool IsL3Active();
     bool IsL2Active();
     bool PolicyEnabled();
-    void UpdateL3Services(bool val);
+    void UpdateL3Services(bool dhcp, bool dns);
     void AddRoute(const std::string &vrf_name, const Ip4Address &ip,
                   uint32_t plen, bool policy);
     void DeleteRoute(const std::string &vrf_name, const Ip4Address &ip,
@@ -447,6 +456,10 @@ private:
     std::string cfg_name_;
     bool fabric_port_;
     bool need_linklocal_ip_;
+    // DHCP flag - set according to the dhcp option in the ifmap subnet object.
+    // It controls whether the vrouter sends the DHCP requests from VM interface
+    // to agent or if it would flood the request in the VN.
+    bool dhcp_enable_;
     // true if IP is to be obtained from DHCP Relay and not learnt from fabric
     bool do_dhcp_relay_; 
     // VM-Name. Used by DNS
@@ -460,6 +473,8 @@ private:
     // VLAN Tag and the parent interface when VLAN is enabled
     uint16_t vlan_id_;
     InterfaceRef parent_;
+    // DHCP options defined for the interface
+    OperDhcpOptions oper_dhcp_options_;
 
     // Lists
     SecurityGroupEntryList sg_list_;
@@ -573,7 +588,8 @@ struct VmInterfaceConfigData : public VmInterfaceData {
         VmInterfaceData(CONFIG), addr_(0), vm_mac_(""), cfg_name_(""),
         vm_uuid_(), vm_name_(), vn_uuid_(), vrf_name_(""), fabric_port_(true),
         need_linklocal_ip_(false), layer2_forwarding_(true),
-        ipv4_forwarding_(true), mirror_enable_(false), analyzer_name_(""),
+        ipv4_forwarding_(true), mirror_enable_(false), dhcp_enable_(true),
+        analyzer_name_(""), oper_dhcp_options_(),
         mirror_direction_(Interface::UNKNOWN), sg_list_(), 
         floating_ip_list_(), service_vlan_list_(), static_route_list_() {
     }
@@ -584,8 +600,8 @@ struct VmInterfaceConfigData : public VmInterfaceData {
         vm_uuid_(), vm_name_(vm_name), vn_uuid_(), vrf_name_(""),
         fabric_port_(true), need_linklocal_ip_(false), 
         layer2_forwarding_(true), ipv4_forwarding_(true), 
-        mirror_enable_(false), analyzer_name_(""),
-        mirror_direction_(Interface::UNKNOWN), sg_list_(),
+        mirror_enable_(false), dhcp_enable_(true), analyzer_name_(""),
+        oper_dhcp_options_(), mirror_direction_(Interface::UNKNOWN), sg_list_(),
         floating_ip_list_(), service_vlan_list_(), static_route_list_() {
     }
 
@@ -606,8 +622,10 @@ struct VmInterfaceConfigData : public VmInterfaceData {
     bool layer2_forwarding_;
     bool ipv4_forwarding_;
     bool mirror_enable_;
+    bool dhcp_enable_; // is DHCP enabled for the interface (from subnet config)
     bool admin_state_;
     std::string analyzer_name_;
+    OperDhcpOptions oper_dhcp_options_;
     Interface::MirrorDirection mirror_direction_;
     VmInterface::SecurityGroupEntryList sg_list_;
     VmInterface::FloatingIpList floating_ip_list_;

@@ -183,8 +183,8 @@ WhereQuery::WhereQuery(const std::string& where_json_string, int direction,
                 }
             }
 
-            int idx = m_query->stat_table_index();
-            if ((name == g_viz_constants.SOURCE) && (idx == -1))
+            bool isStat = m_query->is_stat_table_query();
+            if ((name == g_viz_constants.SOURCE) && (!isStat))
             {
                 DbQueryUnit *db_query = new DbQueryUnit(and_node, main_query);
 
@@ -200,7 +200,7 @@ WhereQuery::WhereQuery(const std::string& where_json_string, int direction,
                 QE_TRACE(DEBUG, "where match term for source " << value);
             }
            
-            if ((name == g_viz_constants.MODULE) && (idx == -1))
+            if ((name == g_viz_constants.MODULE) && (!isStat))
             {
                 DbQueryUnit *db_query = new DbQueryUnit(and_node, main_query);
                 db_query->cfname = g_viz_constants.MESSAGE_TABLE_MODULE_ID;
@@ -220,7 +220,7 @@ WhereQuery::WhereQuery(const std::string& where_json_string, int direction,
                 QE_TRACE(DEBUG, "where match term for module " << value);
             }
  
-            if ((name == g_viz_constants.MESSAGE_TYPE) && (idx == -1))
+            if ((name == g_viz_constants.MESSAGE_TYPE) && (!isStat))
             {
                 DbQueryUnit *db_query = new DbQueryUnit(and_node, main_query);
                 db_query->cfname = 
@@ -236,7 +236,7 @@ WhereQuery::WhereQuery(const std::string& where_json_string, int direction,
                 QE_TRACE(DEBUG, "where match term for msg-type " << value);
             }
   
-            if ((name == g_viz_constants.CATEGORY) && (idx == -1))
+            if ((name == g_viz_constants.CATEGORY) && (!isStat))
             {
                 DbQueryUnit *db_query = new DbQueryUnit(and_node, main_query);
                 db_query->cfname = 
@@ -419,43 +419,48 @@ WhereQuery::WhereQuery(const std::string& where_json_string, int direction,
             }
 
 
-            if (idx != -1)
+            if (isStat)
             {
+                int idx = m_query->stat_table_index();
+
                 bool isStr = false;
                 GenDb::DbDataValue smpl,smpl2,endsmpl;
                 DbQueryUnit *db_query = new DbQueryUnit(and_node, main_query);
                 if ((name == g_viz_constants.STAT_OBJECTID_FIELD) || 
                     (name == g_viz_constants.STAT_SOURCE_FIELD)) {
-                    db_query->cfname = g_viz_constants.STATS_TABLE_BY_STR_STR_TAG;
+                    db_query->cfname = g_viz_constants.STATS_TABLE_BY_STR_TAG;
                     smpl = value;
                     isStr = true;
                 } else {
-                    int at_idx = -1;
-                    for (size_t j = 0; 
-                            j < g_viz_constants._STAT_TABLES[idx].attributes.size();
-                            j++) {
-                        if ((g_viz_constants._STAT_TABLES[idx].attributes[j].name ==
-                                name) && g_viz_constants._STAT_TABLES[idx].attributes[j].index) {
-                            at_idx = j;
-                            break;
-                        } 
+                    if (m_query->stat_table_index() != -1) {
+                        // For static StatTables, check that the attr name is valid
+                        int at_idx = -1;
+                        for (size_t j = 0;
+                                j < g_viz_constants._STAT_TABLES[idx].attributes.size();
+                                j++) {
+                            if ((g_viz_constants._STAT_TABLES[idx].attributes[j].name ==
+                                    name) && g_viz_constants._STAT_TABLES[idx].attributes[j].index) {
+                                at_idx = j;
+                                break;
+                            }
+                        }
+                        QE_INVALIDARG_ERROR(at_idx != -1);
                     }
-                    QE_INVALIDARG_ERROR(at_idx != -1);
 
-                    if (g_viz_constants._STAT_TABLES[idx].attributes[at_idx].datatype == "string") { 
-                        db_query->cfname = g_viz_constants.STATS_TABLE_BY_STR_STR_TAG;
+                    if (value_value.IsString()) {
+                        db_query->cfname = g_viz_constants.STATS_TABLE_BY_STR_TAG;
                         smpl = value;
                         endsmpl = std::string();
                         isStr = true;
-                    } else if (g_viz_constants._STAT_TABLES[idx].attributes[at_idx].datatype == "int") {
-                        db_query->cfname = g_viz_constants.STATS_TABLE_BY_U64_STR_TAG;
+                    } else if (value_value.IsUint() || value_value.IsInt()) {
+                        db_query->cfname = g_viz_constants.STATS_TABLE_BY_U64_TAG;
                         smpl = (uint64_t) strtoul(value.c_str(), NULL, 10);
                         if (op == IN_RANGE) {
                             smpl2 = (uint64_t) strtoul(value2.c_str(), NULL, 10);
                         }
                         endsmpl = (uint64_t)0xffffffffffffffff;
-                    } else if (g_viz_constants._STAT_TABLES[idx].attributes[at_idx].datatype == "double") {
-                        db_query->cfname = g_viz_constants.STATS_TABLE_BY_DBL_STR_TAG;
+                    } else if (value_value.IsDouble()) {
+                        db_query->cfname = g_viz_constants.STATS_TABLE_BY_DBL_TAG;
                         smpl = (double) strtod(value.c_str(), NULL);
                         if (op == IN_RANGE) {
                             smpl2 = (double) strtod(value2.c_str(), NULL);
@@ -475,8 +480,16 @@ WhereQuery::WhereQuery(const std::string& where_json_string, int direction,
                 }
 
                 // string encoding
-                db_query->row_key_suffix.push_back(g_viz_constants._STAT_TABLES[idx].stat_type);
-                db_query->row_key_suffix.push_back(g_viz_constants._STAT_TABLES[idx].stat_attr);
+                size_t tpos,apos;
+                std::string tname = m_query->table();
+                tpos = tname.find('.');
+                apos = tname.find('.', tpos+1);
+
+                std::string tstr = tname.substr(tpos+1, apos-tpos-1);
+                std::string astr = tname.substr(apos+1, std::string::npos);
+
+                db_query->row_key_suffix.push_back(tstr);
+                db_query->row_key_suffix.push_back(astr);
                 db_query->row_key_suffix.push_back(name);
 
                 db_query->cr.start_.push_back(smpl);
@@ -488,7 +501,8 @@ WhereQuery::WhereQuery(const std::string& where_json_string, int direction,
                 } else {
                     db_query->cr.finish_.push_back(smpl);
                 }
-                db_query->cr.finish_.push_back(std::string());
+                // TODO: Only needed in the twotag case (prefix+suffix)
+                // db_query->cr.finish_.push_back(std::string());
                 QE_TRACE(DEBUG, "where match term for stat name: " <<
                     name << " value: " << value);
                 object_id_specified = true;

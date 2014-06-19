@@ -115,7 +115,7 @@ static void AddSgIdAcl(const char *name, int id, int proto,
     pugi::xml_document xdoc_;
     pugi::xml_parse_result result = xdoc_.load(s.c_str());
     EXPECT_TRUE(result);
-    Agent::GetInstance()->GetIfMapAgentParser()->ConfigParse(xdoc_.first_child(), 0);
+    Agent::GetInstance()->ifmap_parser()->ConfigParse(xdoc_.first_child(), 0);
     client->WaitForIdle();
 }
 
@@ -182,7 +182,7 @@ static bool VmPortSetup(struct PortInfo *input, int count, int aclid) {
         ret = false;
     }
 
-    strcpy(vhost_addr, Agent::GetInstance()->GetRouterId().to_string().c_str());
+    strcpy(vhost_addr, Agent::GetInstance()->router_id().to_string().c_str());
     return ret;
 }
 
@@ -658,14 +658,14 @@ TEST_F(SgTcpAckTest, local_vm_ingress_tcp_acl_1) {
                                intf1->flow_key_nh()->id()));
 
     // TCP Non-ACK from VM2 to VM1 - DROP
-    TxTcpPacket(intf1->id(), intf2_addr, intf1_addr, 3, 3, false, 20);
+    TxTcpPacket(intf2->id(), intf2_addr, intf1_addr, 3, 3, false, 20);
     client->WaitForIdle();
     EXPECT_TRUE(ValidateAction(intf2->vrf()->vrf_id(), intf2_addr,
                                intf1_addr, 6, 3, 3, TrafficAction::DROP,
                                intf2->flow_key_nh()->id()));
 
     // TCP Non-ACK from VM2 to VM1 - DROP
-    TxTcpPacket(intf1->id(), intf2_addr, intf1_addr, 4, 4, true, 30);
+    TxTcpPacket(intf2->id(), intf2_addr, intf1_addr, 4, 4, true, 30);
     client->WaitForIdle();
     EXPECT_TRUE(ValidateAction(intf2->vrf()->vrf_id(), intf2_addr,
                                intf1_addr, 6, 4, 4, TrafficAction::DROP,
