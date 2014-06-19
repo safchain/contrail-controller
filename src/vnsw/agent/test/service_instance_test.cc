@@ -41,7 +41,7 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         agent_.reset(new Agent);
     }
 
-    void SetUp() {
+    virtual void SetUp() {
         AgentConfig *config = new AgentConfig(agent_.get());
         agent_->set_cfg(config);
         OperDB *oper_db = new OperDB(agent_.get());
@@ -58,22 +58,28 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         MessageInit();
     }
 
-    void MessageInit() {
-        doc_.reset();
-        config_ = doc_.append_child("config");
-    }
-
-    void TearDown() {
+    virtual void TearDown() {
         task_util::WaitForIdle();
 
         agent_->oper_db()->Shutdown();
         agent_->cfg()->Shutdown();
+        task_util::WaitForIdle();
 
         DB *database = agent_->GetDB();
-        IFMapTable::ClearTables(database);
-
         db_util::Clear(database);
         task_util::WaitForIdle();
+
+        /**
+         * The factory create method for ifmap link table takes the
+         * graph as a boost::bind() argument; failure to cleanup the registry
+         * implies creating the table using a stale graph pointer.
+         */
+        DB::ClearFactoryRegistry();
+    }
+
+    void MessageInit() {
+        doc_.reset();
+        config_ = doc_.append_child("config");
     }
 
     std::string GetRandomIp() {
