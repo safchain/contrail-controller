@@ -162,8 +162,10 @@ class ServiceInstanceIntegrationTest : public ::testing::Test {
         svc_template.SetProperty("id-perms", &id);
 
         autogen::ServiceTemplateType props;
-        // TODO: set service-type and instance-type
         props.Clear();
+        props.service_type = "source-nat";
+        props.service_virtualization_type = "network-namespace";
+        svc_template.SetProperty("service-template-properties", &props);
 
         pugi::xml_node update = config_.append_child("update");
         EncodeNode(&update, "service-template", tmpl_name, &svc_template);

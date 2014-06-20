@@ -48,12 +48,10 @@ class ServiceInstanceUpdate : public AgentData {
 class ServiceInstanceTypesMapping {
 public:
     static const std::string kOtherType;
-    static ServiceInstance::ServiceType StrServiceTypeToInt(
-        const std::string &type);
+    static int StrServiceTypeToInt(const std::string &type);
     static const std::string &IntServiceTypeToStr(
         const ServiceInstance::ServiceType &type);
-    static ServiceInstance::VirtualizationType StrVirtualizationTypeToInt(
-        const std::string &type);
+    static int StrVirtualizationTypeToInt(const std::string &type);
 
 private:
     typedef std::map<std::string, int> StrTypeToIntMap;
@@ -253,19 +251,13 @@ static void FindAndSetTypes(DBGraph *graph, IFMapNode *si_node,
     autogen::ServiceTemplateType svc_template_props =
             svc_template->properties();
 
-    ServiceInstance::ServiceType service_type =
+    properties->service_type =
             ServiceInstanceTypesMapping::StrServiceTypeToInt(
                 svc_template_props.service_type);
-    properties->service_type = service_type;
 
-    /*
-     * TODO(safchain) waiting for the edouard's patch merge
-     */
-    /*int virtualization_type = ServiceInstanceTypeMapping::StrServiceTypeToInt(
-       svc_template_props.service_virtualization_type);*/
-    ServiceInstance::VirtualizationType virtualization_type
-            = ServiceInstance::NetworkNamespace;
-    properties->virtualization_type = virtualization_type;
+    properties->virtualization_type = 
+            ServiceInstanceTypesMapping::StrVirtualizationTypeToInt(
+                svc_template_props.service_virtualization_type);
 }
 
 /*
@@ -342,7 +334,7 @@ const std::string &ServiceInstance::Properties::ServiceTypeString() const {
         static_cast<ServiceType>(service_type));
 }
 
-     /*
+/*
  * ServiceInstance class
  */
 ServiceInstance::ServiceInstance() {
@@ -394,6 +386,14 @@ void ServiceInstance::CalculateProperties(
     }
 
     FindAndSetTypes(graph, node_, properties);
+
+    /*
+     * The vrouter agent is only interest in the properties of service
+     * instances that are implemented as a network-namespace.
+     */
+    if (properties->virtualization_type != NetworkNamespace) {
+        return;
+    }
 
     IFMapNode *vm_node = FindAndSetVirtualMachine(graph, node_, properties);
     if (vm_node == NULL) {
@@ -523,22 +523,21 @@ ServiceInstanceTypesMapping::StrTypeToIntMap
 ServiceInstanceTypesMapping::virtualization_type_map_ = InitVirtualizationTypeMap();
 const std::string ServiceInstanceTypesMapping::kOtherType = "Other";
 
-ServiceInstance::ServiceType ServiceInstanceTypesMapping::StrServiceTypeToInt(
-        const std::string &type) {
+int ServiceInstanceTypesMapping::StrServiceTypeToInt(const std::string &type) {
     StrTypeToIntMap::const_iterator it = service_type_map_.find(type);
     if (it != service_type_map_.end()) {
-        return static_cast<ServiceInstance::ServiceType>(it->second);
+        return it->second;
     }
-    return ServiceInstance::Other;
+    return 0;
 }
 
-ServiceInstance::VirtualizationType ServiceInstanceTypesMapping::StrVirtualizationTypeToInt(
+int ServiceInstanceTypesMapping::StrVirtualizationTypeToInt(
         const std::string &type) {
     StrTypeToIntMap::const_iterator it = virtualization_type_map_.find(type);
     if (it != virtualization_type_map_.end()) {
-        return static_cast<ServiceInstance::VirtualizationType>(it->second);
+        return it->second;
     }
-    return ServiceInstance::VirtualMachine;
+    return 0;
 }
 
 const std::string &ServiceInstanceTypesMapping::IntServiceTypeToStr(
