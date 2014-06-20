@@ -55,13 +55,15 @@ class NamespaceManagerTest : public ::testing::Test {
         db_util::Clear(&database_);
     }
 
-    void AddServiceInstance(const std::string &name) {
+    boost::uuids::uuid AddServiceInstance(const std::string &name) {
         ifmap_test_util::IFMapMsgNodeAdd(&database_, "service-instance", name);
         task_util::WaitForIdle();
         IFMapTable *table = IFMapTable::FindTable(&database_,
                                                   "service-instance");
         IFMapNode *node = table->FindNode(name);
-        ASSERT_TRUE(node != NULL);
+        if (node == NULL) {
+            return boost::uuids::nil_uuid();
+        }
         DBRequest request;
         si_table_->IFNodeToReq(node, request);
         si_table_->Enqueue(&request);
@@ -70,24 +72,43 @@ class NamespaceManagerTest : public ::testing::Test {
         autogen::ServiceInstance *si_object =
                 static_cast<autogen::ServiceInstance *>(node->GetObject());
         const autogen::IdPermsType &id = si_object->id_perms();
-        ServiceInstanceKey key(IdPermsGetUuid(id));
+        boost::uuids::uuid instance_id = IdPermsGetUuid(id);
+        ServiceInstanceKey key(instance_id);
         ServiceInstance *svc_instance =
                 static_cast<ServiceInstance *>(si_table_->Find(&key, true));
-        ASSERT_TRUE(svc_instance != NULL);
+        if (svc_instance == NULL) {
+            return boost::uuids::nil_uuid();
+        }
 
         /*
          * Set non-nil uuids
          */
         ServiceInstance::Properties prop;
         prop.Clear();
+        prop.virtualization_type = ServiceInstance::NetworkNamespace;
         boost::uuids::random_generator gen;
         prop.instance_id = gen();
         prop.vmi_inside = gen();
         prop.vmi_outside = gen();
+        prop.ip_addr_inside = "10.0.0.1";
+        prop.ip_addr_outside = "10.0.0.2";
+        prop.ip_prefix_len_inside = 24;
+        prop.ip_prefix_len_outside = 24;
         svc_instance->set_properties(prop);
+        EXPECT_TRUE(svc_instance->IsUsable());
         si_table_->Change(svc_instance);
+        return instance_id;
     }
 
+    NamespaceState *ServiceInstanceState(boost::uuids::uuid id) {
+        ServiceInstanceKey key(id);
+        ServiceInstance *svc_instance =
+                static_cast<ServiceInstance *>(si_table_->Find(&key, true));
+        if (svc_instance == NULL) {
+            return NULL;
+        }
+        return ns_manager_->GetState(svc_instance);
+    }
 
     DB database_;
     DBGraph graph_;
@@ -99,9 +120,12 @@ class NamespaceManagerTest : public ::testing::Test {
 
 TEST_F(NamespaceManagerTest, ExecTrue) {
     ns_manager_->Initialize(&database_, "/bin/true");
-    AddServiceInstance("exec-true");
+    boost::uuids::uuid id = AddServiceInstance("exec-true");
+    EXPECT_FALSE(id.is_nil());
     task_util::WaitForIdle();
-    // TODO: verify the status of the command execution
+    NamespaceState *ns_state = ServiceInstanceState(id);
+    ASSERT_TRUE(ns_state != NULL);
+    EXPECT_EQ(0, ns_state->status());
 }
 
 static void SetUp() {

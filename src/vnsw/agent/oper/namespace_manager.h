@@ -34,13 +34,18 @@ public:
     void HandleSigChild(const boost::system::error_code& error, int sig, pid_t pid, int status);
 
 private:
+    friend class NamespaceManagerTest;
+
     void ExecCmd(const std::string &cmd, NamespaceState *state);
     void StartNetNS(const ServiceInstance *svc_instance, NamespaceState *state);
     void StopNetNS(const ServiceInstance *svc_instance, NamespaceState *state);
     void RegisterSigHandler();
     void InitSigHandler(AgentSignal *signal);
     void ReadErrors(const boost::system::error_code &ec, size_t read_bytes, pid_t pid);
+
     NamespaceState *GetState(pid_t pid);
+    NamespaceState *GetState(ServiceInstance *);
+
     void RemoveState(pid_t pid);
 
     /*
@@ -56,6 +61,7 @@ private:
     char rx_buff_[kBufLen];
     NamespaceStatePidMap namespace_state_pid_map_;
 };
+
 class NamespaceState : public DBState {
 
 public:

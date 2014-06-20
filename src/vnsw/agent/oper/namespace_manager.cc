@@ -54,6 +54,11 @@ NamespaceState *NamespaceManager::GetState(pid_t pid) {
     return NULL;
 }
 
+NamespaceState *NamespaceManager::GetState(ServiceInstance *svc_instance) {
+    return static_cast<NamespaceState *>(
+        svc_instance->GetState(si_table_, listener_id_));
+}
+
 void NamespaceManager::RemoveState(pid_t pid) {
     NamespaceStatePidMap::const_iterator it = namespace_state_pid_map_.find(pid);
     if (it != namespace_state_pid_map_.end()) {

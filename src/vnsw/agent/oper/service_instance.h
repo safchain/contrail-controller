@@ -2,8 +2,8 @@
  * Copyright (c) 2014 Juniper Networks, Inc. All rights reserved.
  */
 
-#ifndef __AGENT_OPER_SERVICE_INSTANCE_H__
-#define __AGENT_OPER_SERVICE_INSTANCE_H__
+#ifndef VNSW_AGENT_OPER_SERVICE_INSTANCE_H__
+#define VNSW_AGENT_OPER_SERVICE_INSTANCE_H__
 
 #include <map>
 #include <boost/uuid/uuid.hpp>
@@ -14,7 +14,7 @@ class IFMapDependencyManager;
 
 class ServiceInstanceKey : public AgentKey {
   public:
-    ServiceInstanceKey(boost::uuids::uuid uuid) {
+    explicit ServiceInstanceKey(boost::uuids::uuid uuid) {
         uuid_ = uuid;
     }
     const boost::uuids::uuid &instance_id() const {
@@ -147,4 +147,4 @@ class ServiceInstanceTable : public AgentDBTable {
     DISALLOW_COPY_AND_ASSIGN(ServiceInstanceTable);
 };
 
-#endif
+#endif  // VNSW_AGENT_OPER_SERVICE_INSTANCE_H__
