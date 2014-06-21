@@ -37,6 +37,8 @@
 #define TUN_INTF_CLONE_DEV      "/dev/net/tun"
 #define SOCK_RETRY_COUNT 4
 
+#define VIF_FLAG_DHCP_ENABLED 33
+
 InterfaceKSyncEntry::InterfaceKSyncEntry(InterfaceKSyncObject *obj, 
                                          const InterfaceKSyncEntry *entry, 
                                          uint32_t index) :

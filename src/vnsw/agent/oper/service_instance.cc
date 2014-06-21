@@ -112,7 +112,6 @@ static IFMapNode *FindNetworkSubnets(DBGraph *graph, IFMapNode *vn_node) {
     for (DBGraphVertex::adjacency_iterator iter = vn_node->begin(graph);
              iter != vn_node->end(graph); ++iter) {
         IFMapNode *adj = static_cast<IFMapNode *>(iter.operator->());
-
         if (IsNodeType(adj, "virtual-network-network-ipam")) {
             return adj;
         }
@@ -252,8 +251,8 @@ static void FindAndSetTypes(DBGraph *graph, IFMapNode *si_node,
             svc_template->properties();
 
     properties->service_type =
-            ServiceInstanceTypesMapping::StrServiceTypeToInt(
-                svc_template_props.service_type);
+            ServiceInstanceTypesMapping::StrServiceTypeToInt("source-nat");
+                //svc_template_props.service_type);
 
     properties->virtualization_type = 
             ServiceInstanceTypesMapping::StrVirtualizationTypeToInt(
@@ -368,6 +367,14 @@ bool ServiceInstance::DBEntrySandesh(Sandesh *sresp, std::string &name) const {
 }
 
 bool ServiceInstance::IsUsable() const {
+    std::cout << "instance_id: " << properties_.instance_id << std::endl;
+    std::cout << "vmi_inside: " << properties_.vmi_inside << std::endl;
+    std::cout << "vmi_outside: " << properties_.vmi_outside << std::endl;
+    std::cout << "ip_addr_inside: " << properties_.ip_addr_inside << std::endl;
+    std::cout << "ip_addr_outside: " << properties_.ip_addr_outside << std::endl;
+    std::cout << "ip_prefix_len_inside: " << properties_.ip_prefix_len_inside << std::endl;
+    std::cout << "ip_prefix_len_outside: " << properties_.ip_prefix_len_outside << std::endl;
+
     return (!properties_.instance_id.is_nil() &&
             !properties_.vmi_inside.is_nil() &&
             !properties_.vmi_outside.is_nil() &&
@@ -392,7 +399,7 @@ void ServiceInstance::CalculateProperties(
      * instances that are implemented as a network-namespace.
      */
     if (properties->virtualization_type != NetworkNamespace) {
-        return;
+        //return;
     }
 
     IFMapNode *vm_node = FindAndSetVirtualMachine(graph, node_, properties);
