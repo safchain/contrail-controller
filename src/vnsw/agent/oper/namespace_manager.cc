@@ -14,18 +14,20 @@
 
 using boost::uuids::uuid;
 
-NamespaceManager::NamespaceManager(EventManager *evm, AgentSignal *signal)
+NamespaceManager::NamespaceManager(EventManager *evm)
         : evm_(evm), si_table_(NULL),
-          listener_id_(DBTableBase::kInvalidId) {
-    if (signal) {
-        InitSigHandler(signal);
-    }
+          listener_id_(DBTableBase::kInvalidId), netns_timeout_() {
 }
 
-void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd,
+void NamespaceManager::Initialize(DB *database, AgentSignal *signal, const std::string &netns_cmd,
         const int netns_workers, const int netns_timeout) {
     si_table_ = database->FindTable("db.service-instance.0");
     assert(si_table_);
+
+    if (signal) {
+        InitSigHandler(signal);
+    }
+
     listener_id_ = si_table_->Register(
         boost::bind(&NamespaceManager::EventObserver, this, _1, _2));
 
@@ -36,7 +38,7 @@ void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd,
     }
 
     netns_timeout_ = 30;
-    if (netns_timeout > 1) {
+    if (netns_timeout >= 1) {
         netns_timeout_ = netns_timeout;
     }
 
@@ -59,7 +61,9 @@ void NamespaceManager::UpdateState(NamespaceTask* task, int status) {
             state->set_status(status);
 
             if (status != 0) {
-                state->set_status_type(NamespaceState::Error);
+                if (state->status_type() != NamespaceState::Timeout) {
+                    state->set_status_type(NamespaceState::Error);
+                }
             } else if (state->status_type() == NamespaceState::Starting) {
                 state->set_status_type(NamespaceState::Started);
             } else if (state->status_type() == NamespaceState::Stopping) {
@@ -138,9 +142,6 @@ void  NamespaceManager::Enqueue(NamespaceTask *task, const boost::uuids::uuid &u
 NamespaceManager::TaskQueue *NamespaceManager::GetTaskQueue(const std::string &str) {
     boost::hash<std::string> hash;
     int index = hash(str) % task_queues_.capacity();
-
-    std::cout << "SCHED: " << str << " BUCKET: " << index;
-
     return task_queues_[index];
 }
 
@@ -156,10 +157,8 @@ void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
             task_queue->pop();
             delete task;
         } else {
-            int now = time(NULL);
-            if ((now - task->start_time()) > (netns_timeout_ * 2)) {
-                task->Terminate();
-
+            time_t now = time(NULL);
+            if ((now - task->start_time()) > netns_timeout_) {
                 ServiceInstance* svc_instance = GetSvcInstance(task);
                 if (svc_instance) {
                     NamespaceState *state = GetState(svc_instance);
@@ -168,16 +167,20 @@ void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
                     }
                 }
 
-                task_queue->pop();
-                delete task;
+                if ((now - task->start_time()) > (netns_timeout_ * 2)) {
+                    task->Terminate();
 
-                LOG(ERROR, "Hard timeout, " + task->cmd());
+                    task_queue->pop();
+                    delete task;
 
-                continue;
-            } else if ((now - task->start_time()) > netns_timeout_) {
-                task->Stop();
+                    LOG(ERROR, "Hard timeout, " + task->cmd());
 
-                LOG(ERROR, "Soft timeout, " + task->cmd());
+                    continue;
+                } else {
+                    task->Stop();
+
+                    LOG(ERROR, "Soft timeout, " + task->cmd());
+                }
             }
             return;
         }
@@ -221,7 +224,7 @@ void NamespaceManager::StartNetNS(ServiceInstance *svc_instance, NamespaceState 
     cmd_str << netns_cmd_ << " create";
 
     const ServiceInstance::Properties &props = svc_instance->properties();
-    cmd_str << " source-nat ";// << props.ServiceTypeString();
+    cmd_str << " " << props.ServiceTypeString();
     cmd_str << " " << UuidToString(props.instance_id);
     cmd_str << " " << UuidToString(props.vmi_inside);
     cmd_str << " " << UuidToString(props.vmi_outside);
@@ -256,8 +259,6 @@ void NamespaceManager::OnError(NamespaceTask *task, const std::string errors) {
     NamespaceState *state = GetState(svc_instance);
     if (state != NULL) {
         state->set_last_errors(errors);
-
-        std::cout << "ERROR: " << errors << std::endl;
     }
 }
 
@@ -307,7 +308,7 @@ void NamespaceManager::EventObserver(
 
             StartNetNS(svc_instance, state, false);
         } else if (state->status_type() == NamespaceState::Error ||
-                   ! state->properties().CompareTo(svc_instance->properties())) {
+                   state->properties().CompareTo(svc_instance->properties()) != 0) {
             /*
              * a previous instance has been started but is in a fail state,
              * so try to restart it
@@ -384,8 +385,6 @@ void NamespaceTask::Terminate() {
 bool NamespaceTask::Run() {
     std::vector<std::string> argv;
     LOG(DEBUG, "Start a NetNS command: " << cmd_);
-
-    std::cout << "Run: " << cmd_ << std::endl;
 
     is_running_ = true;
 

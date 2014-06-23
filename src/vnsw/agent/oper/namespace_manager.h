@@ -25,9 +25,9 @@ class NamespaceTask;
 class NamespaceManager {
 public:
     typedef std::queue<NamespaceTask *> TaskQueue;
-    NamespaceManager(EventManager *evm, AgentSignal *signal);
+    NamespaceManager(EventManager *evm);
 
-    void Initialize(DB *database, const std::string &netns_cmd,
+    void Initialize(DB *database, AgentSignal *signal, const std::string &netns_cmd,
             const int netns_workers, const int netns_timeout);
     void Terminate();
 
@@ -132,7 +132,7 @@ public:
     bool is_running() const { return is_running_; }
     pid_t pid() const { return pid_; }
 
-    int start_time() const { return start_time_; }
+    time_t start_time() const { return start_time_; }
     void set_on_error_cb(OnErrorCallback cb) { on_error_cb_ = cb; }
 
     const std::string &cmd() const { return cmd_; }
@@ -150,11 +150,7 @@ private:
 
     OnErrorCallback on_error_cb_;
 
-    int start_time_;
-
-    /*
-     * TODO(safchain) add a start time here to be able to add a timeout mechanism
-     */
+    time_t start_time_;
 };
 
 #endif

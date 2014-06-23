@@ -149,7 +149,8 @@ void OperDB::Init() {
         netns_workers = agent_->params()->si_netns_workers();
         netns_timeout = agent_->params()->si_netns_timeout();
     }
-    namespace_manager_->Initialize(agent_->db(), netns_cmd, netns_workers, netns_timeout);
+    namespace_manager_->Initialize(agent_->db(), agent_->agent_signal(),
+            netns_cmd, netns_workers, netns_timeout);
 }
 
 void OperDB::RegisterDBClients() {
@@ -164,7 +165,7 @@ OperDB::OperDB(Agent *agent)
                   agent->db(), agent->cfg()->cfg_graph())),
           namespace_manager_(
                   AgentObjectFactory::Create<NamespaceManager>(
-                      agent->event_manager(), agent->agent_signal())),
+                      agent->event_manager())),
           domain_config_(new DomainConfig()) {
 }
 
