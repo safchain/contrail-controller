@@ -27,7 +27,8 @@ public:
     typedef std::queue<NamespaceTask *> TaskQueue;
     NamespaceManager(EventManager *evm, AgentSignal *signal);
 
-    void Initialize(DB *database, const std::string &netns_cmd, const int netns_workers);
+    void Initialize(DB *database, const std::string &netns_cmd,
+            const int netns_workers, const int netns_timeout);
     void Terminate();
 
 private:
@@ -56,11 +57,13 @@ private:
      * Event observer for changes in the "db.service-instance.0" table.
      */
     void EventObserver(DBTablePartBase *db_part, DBEntryBase *entry);
+    void UpdateState(NamespaceTask* task, int status);
 
     EventManager *evm_;
     DBTableBase *si_table_;
     DBTableBase::ListenerId listener_id_;
     std::string netns_cmd_;
+    int netns_timeout_;
 
     std::vector<TaskQueue *> task_queues_;
     std::map<NamespaceTask *, ServiceInstance *> task_svc_instances_;
@@ -74,7 +77,8 @@ public:
         Started,
         Stopping,
         Stopped,
-        Error
+        Error,
+        Timeout
     };
 
     NamespaceState();
@@ -122,11 +126,16 @@ public:
 
     void ReadErrors(const boost::system::error_code &ec, size_t read_bytes);
     bool Run();
+    void Stop();
+    void Terminate();
 
     bool is_running() const { return is_running_; }
     pid_t pid() const { return pid_; }
 
+    int start_time() const { return start_time_; }
     void set_on_error_cb(OnErrorCallback cb) { on_error_cb_ = cb; }
+
+    const std::string &cmd() const { return cmd_; }
 
 private:
     const std::string cmd_;
@@ -140,6 +149,8 @@ private:
     pid_t pid_;
 
     OnErrorCallback on_error_cb_;
+
+    int start_time_;
 
     /*
      * TODO(safchain) add a start time here to be able to add a timeout mechanism

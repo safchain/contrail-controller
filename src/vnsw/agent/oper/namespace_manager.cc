@@ -22,7 +22,8 @@ NamespaceManager::NamespaceManager(EventManager *evm, AgentSignal *signal)
     }
 }
 
-void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd, const int netns_workers) {
+void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd,
+        const int netns_workers, const int netns_timeout) {
     si_table_ = database->FindTable("db.service-instance.0");
     assert(si_table_);
     listener_id_ = si_table_->Register(
@@ -34,6 +35,11 @@ void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd, co
                    "in the config file, the namespaces won't be started");
     }
 
+    netns_timeout_ = 30;
+    if (netns_timeout > 1) {
+        netns_timeout_ = netns_timeout;
+    }
+
     int workers = 1;
     if (netns_workers > 1) {
        workers = netns_workers;
@@ -42,6 +48,24 @@ void NamespaceManager::Initialize(DB *database, const std::string &netns_cmd, co
     for (std::vector<TaskQueue *>::iterator iter = task_queues_.begin();
          iter != task_queues_.end(); ++iter) {
         *iter = new TaskQueue();
+    }
+}
+
+void NamespaceManager::UpdateState(NamespaceTask* task, int status) {
+    ServiceInstance* svc_instance = GetSvcInstance(task);
+    if (svc_instance) {
+        NamespaceState *state = GetState(svc_instance);
+        if (state != NULL) {
+            state->set_status(status);
+
+            if (status != 0) {
+                state->set_status_type(NamespaceState::Error);
+            } else if (state->status_type() == NamespaceState::Starting) {
+                state->set_status_type(NamespaceState::Started);
+            } else if (state->status_type() == NamespaceState::Stopping) {
+                state->set_status_type(NamespaceState::Stopped);
+            }
+        }
     }
 }
 
@@ -58,21 +82,8 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code &error, in
             if (! task_queue->empty()) {
                 NamespaceTask *task = task_queue->front();
                 if (task->pid() == pid) {
-                    ServiceInstance *svc_instance = GetSvcInstance(task);
-                    if (svc_instance) {
-                        NamespaceState *state = GetState(svc_instance);
-                        if (state != NULL) {
-                            state->set_status(status);
+                    UpdateState(task, status);
 
-                            if (status != 0) {
-                                state->set_status_type(NamespaceState::Error);
-                            } else if (state->status_type() == NamespaceState::Starting) {
-                                state->set_status_type(NamespaceState::Started);
-                            } else if (state->status_type() == NamespaceState::Stopping) {
-                                state->set_status_type(NamespaceState::Stopped);
-                            }
-                        }
-                    }
                     task_queue->pop();
                     delete task;
 
@@ -127,6 +138,9 @@ void  NamespaceManager::Enqueue(NamespaceTask *task, const boost::uuids::uuid &u
 NamespaceManager::TaskQueue *NamespaceManager::GetTaskQueue(const std::string &str) {
     boost::hash<std::string> hash;
     int index = hash(str) % task_queues_.capacity();
+
+    std::cout << "SCHED: " << str << " BUCKET: " << index;
+
     return task_queues_[index];
 }
 
@@ -142,6 +156,29 @@ void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
             task_queue->pop();
             delete task;
         } else {
+            int now = time(NULL);
+            if ((now - task->start_time()) > (netns_timeout_ * 2)) {
+                task->Terminate();
+
+                ServiceInstance* svc_instance = GetSvcInstance(task);
+                if (svc_instance) {
+                    NamespaceState *state = GetState(svc_instance);
+                    if (state) {
+                        state->set_status_type(NamespaceState::Timeout);
+                    }
+                }
+
+                task_queue->pop();
+                delete task;
+
+                LOG(ERROR, "Hard timeout, " + task->cmd());
+
+                continue;
+            } else if ((now - task->start_time()) > netns_timeout_) {
+                task->Stop();
+
+                LOG(ERROR, "Soft timeout, " + task->cmd());
+            }
             return;
         }
     }
@@ -305,7 +342,7 @@ void NamespaceState::Clear() {
  * NamespaceTask class
  */
 NamespaceTask::NamespaceTask(const std::string &cmd, EventManager *evm) :
-        cmd_(cmd), errors_(*(evm->io_service())), is_running_(false), pid_(0) {
+        cmd_(cmd), errors_(*(evm->io_service())), is_running_(false), pid_(0), start_time_(0) {
 }
 
 void NamespaceTask::ReadErrors(const boost::system::error_code &ec, size_t read_bytes) {
@@ -332,6 +369,16 @@ void NamespaceTask::ReadErrors(const boost::system::error_code &ec, size_t read_
                 boost::bind(&NamespaceTask::ReadErrors, this, boost::asio::placeholders::error,
                         boost::asio::placeholders::bytes_transferred));
     }
+}
+
+void NamespaceTask::Stop() {
+    assert(pid_);
+    kill(pid_, SIGTERM);
+}
+
+void NamespaceTask::Terminate() {
+    assert(pid_);
+    kill(pid_, SIGKILL);
 }
 
 bool NamespaceTask::Run() {
@@ -368,6 +415,8 @@ bool NamespaceTask::Run() {
         _exit(127);
     }
     close(err[1]);
+
+    start_time_ = time(NULL);
 
     boost::system::error_code ec;
     errors_.assign(::dup(err[0]), ec);
