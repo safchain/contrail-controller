@@ -187,22 +187,18 @@ void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
                 assert(state);
                 state->set_status_type(NamespaceState::Timeout);
 
+                std::stringstream ss;
+                ss << "Timeout " << delay << " > " << netns_timeout_ << ", " << task->cmd();
+                LOG(ERROR, ss.str());
+
                 if (delay > (netns_timeout_ * 2)) {
                     task->Terminate();
                     task_queue->pop();
-
-                    std::stringstream ss;
-                    ss << "Timeout " << delay << " > " << netns_timeout_ << ", " << task->cmd();
-                    LOG(ERROR, ss.str());
 
                     delete task;
                     continue;
                 } else {
                     task->Stop();
-
-                    std::stringstream ss;
-                    ss << "Timeout " << delay << " > " << netns_timeout_ << ", " << task->cmd();
-                    LOG(ERROR, ss.str());
                 }
             }
             return;
