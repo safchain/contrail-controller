@@ -763,8 +763,8 @@ AgentParam::AgentParam(Agent *agent) :
         agent_stats_interval_(AgentStatsCollector::AgentStatsInterval), 
         flow_stats_interval_(FlowStatsCollector::FlowStatsInterval),
         vmware_physical_port_(""), test_mode_(false), debug_(false), tree_(),
-        headless_mode_(false), si_netns_command_(), si_netns_workers_(),
-        si_netns_timeout_() {
+        headless_mode_(false), si_netns_command_(), si_netns_workers_(0),
+        si_netns_timeout_(0) {
     vgw_config_table_ = std::auto_ptr<VirtualGatewayConfigTable>
         (new VirtualGatewayConfigTable(agent));
 }
