@@ -387,6 +387,10 @@ void AgentParam::ParseHeadlessMode() {
 void AgentParam::ParseServiceInstance() {
     GetValueFromTree<string>(si_netns_command_,
             "SERVICE-INSTANCE.netns_command");
+    GetValueFromTree<int>(si_netns_workers_,
+            "SERVICE-INSTANCE.netns_workers");
+    GetValueFromTree<int>(si_netns_timeout_,
+            "SERVICE-INSTANCE.netns_timeout");
 }
 
 void AgentParam::ParseCollectorArguments
@@ -495,6 +499,8 @@ void AgentParam::ParseHeadlessModeArguments
 void AgentParam::ParseServiceInstanceArguments
     (const boost::program_options::variables_map &var_map) {
     GetOptValue<string>(var_map, si_netns_command_, "SERVICE-INSTANCE.netns_command");
+    GetOptValue<int>(var_map, si_netns_workers_, "SERVICE-INSTANCE.netns_workers");
+    GetOptValue<int>(var_map, si_netns_timeout_, "SERVICE-INSTANCE.netns_timeout");
 }
 
 // Initialize hypervisor mode based on system information
@@ -719,6 +725,8 @@ void AgentParam::LogConfig() const {
     LOG(DEBUG, "Flow cache timeout          : " << flow_cache_timeout_);
     LOG(DEBUG, "Headless Mode               : " << headless_mode_);
     LOG(DEBUG, "Service instance netns cmd  : " << si_netns_command_);
+    LOG(DEBUG, "Service instance workers    : " << si_netns_workers_);
+    LOG(DEBUG, "Service instance timeout    : " << si_netns_timeout_);
     if (mode_ == MODE_KVM) {
     LOG(DEBUG, "Hypervisor mode             : kvm");
         return;
@@ -755,7 +763,8 @@ AgentParam::AgentParam(Agent *agent) :
         agent_stats_interval_(AgentStatsCollector::AgentStatsInterval), 
         flow_stats_interval_(FlowStatsCollector::FlowStatsInterval),
         vmware_physical_port_(""), test_mode_(false), debug_(false), tree_(),
-        headless_mode_(false), si_netns_command_() {
+        headless_mode_(false), si_netns_command_(), si_netns_workers_(),
+        si_netns_timeout_() {
     vgw_config_table_ = std::auto_ptr<VirtualGatewayConfigTable>
         (new VirtualGatewayConfigTable(agent));
 }

@@ -19,7 +19,6 @@ public:
     typedef boost::function<void (const boost::system::error_code& error, int sig, pid_t pid, int status)> SignalChildHandler;
     typedef boost::function<void (const boost::system::error_code& error, int sig)> SignalHandler;
 
-
     void Initialize();
     void Terminate();
     void RegisterHandler(SignalHandler handler);

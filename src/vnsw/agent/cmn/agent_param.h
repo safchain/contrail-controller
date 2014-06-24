@@ -75,6 +75,8 @@ public:
     uint32_t flow_cache_timeout() const {return flow_cache_timeout_;}
     bool headless_mode() const {return headless_mode_;}
     std::string si_netns_command() const {return si_netns_command_;}
+    const int si_netns_workers() const {return si_netns_workers_;}
+    const int si_netns_timeout() const {return si_netns_timeout_;}
 
     const std::string &config_file() const { return config_file_; }
     const std::string &program_name() const { return program_name_;}
@@ -211,6 +213,8 @@ private:
     std::auto_ptr<VirtualGatewayConfigTable> vgw_config_table_;
     bool headless_mode_;
     std::string si_netns_command_;
+    int si_netns_workers_;
+    int si_netns_timeout_;
 
     DISALLOW_COPY_AND_ASSIGN(AgentParam);
 };
