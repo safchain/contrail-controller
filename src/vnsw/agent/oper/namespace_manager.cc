@@ -19,8 +19,10 @@ NamespaceManager::NamespaceManager(EventManager *evm)
           listener_id_(DBTableBase::kInvalidId), netns_timeout_() {
 }
 
-void NamespaceManager::Initialize(DB *database, AgentSignal *signal, const std::string &netns_cmd,
-        const int netns_workers, const int netns_timeout) {
+void NamespaceManager::Initialize(DB *database, AgentSignal *signal,
+                                  const std::string &netns_cmd,
+                                  const int netns_workers,
+                                  const int netns_timeout) {
     si_table_ = database->FindTable("db.service-instance.0");
     assert(si_table_);
 
@@ -74,7 +76,8 @@ void NamespaceManager::UpdateStateStatusType(NamespaceTask* task, int status) {
     }
 }
 
-void NamespaceManager::HandleSigChild(const boost::system::error_code &error, int sig, pid_t pid, int status) {
+void NamespaceManager::HandleSigChild(const boost::system::error_code &error,
+                                      int sig, pid_t pid, int status) {
     switch(sig) {
     case SIGCHLD:
         /*
@@ -84,7 +87,7 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code &error, in
         for (std::vector<TaskQueue *>::iterator iter = task_queues_.begin();
                  iter != task_queues_.end(); ++iter) {
             TaskQueue *task_queue = *iter;
-            if (! task_queue->empty()) {
+            if (!task_queue->empty()) {
                 NamespaceTask *task = task_queue->front();
                 if (task->pid() == pid) {
                     UpdateStateStatusType(task, status);
@@ -115,7 +118,8 @@ NamespaceState *NamespaceManager::GetState(NamespaceTask* task) {
     return NULL;
 }
 
-void NamespaceManager::SetState(ServiceInstance *svc_instance, NamespaceState *state) {
+void NamespaceManager::SetState(ServiceInstance *svc_instance,
+                                NamespaceState *state) {
     svc_instance->SetState(si_table_, listener_id_, state);
 }
 
@@ -138,7 +142,7 @@ void NamespaceManager::Terminate() {
             continue;
         }
 
-        while(! task_queue->empty()) {
+        while(!task_queue->empty()) {
             NamespaceTask *task = task_queue->front();
             task_queue->pop();
             delete task;
@@ -148,7 +152,8 @@ void NamespaceManager::Terminate() {
     }
 }
 
-void  NamespaceManager::Enqueue(NamespaceTask *task, const boost::uuids::uuid &uuid) {
+void  NamespaceManager::Enqueue(NamespaceTask *task,
+                                const boost::uuids::uuid &uuid) {
     std::stringstream ss;
     ss << uuid;
     TaskQueue *task_queue = GetTaskQueue(ss.str());
@@ -156,16 +161,17 @@ void  NamespaceManager::Enqueue(NamespaceTask *task, const boost::uuids::uuid &u
     ScheduleNextTask(task_queue);
 }
 
-NamespaceManager::TaskQueue *NamespaceManager::GetTaskQueue(const std::string &str) {
+NamespaceManager::TaskQueue *NamespaceManager::GetTaskQueue(
+                const std::string &str) {
     boost::hash<std::string> hash;
     int index = hash(str) % task_queues_.capacity();
     return task_queues_[index];
 }
 
 void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
-    while (! task_queue->empty()) {
+    while (!task_queue->empty()) {
         NamespaceTask *task = task_queue->front();
-        if (! task->is_running()) {
+        if (!task->is_running()) {
             NamespaceState *state = GetState(task);
             assert(state);
             state->set_cmd(task->cmd());
@@ -188,7 +194,8 @@ void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
                 state->set_status_type(NamespaceState::Timeout);
 
                 std::stringstream ss;
-                ss << "Timeout " << delay << " > " << netns_timeout_ << ", " << task->cmd();
+                ss << "Timeout " << delay << " > " << netns_timeout_ << ", ";
+                ss << task->cmd();
                 LOG(ERROR, ss.str());
 
                 if (delay > (netns_timeout_ * 2)) {
@@ -207,19 +214,22 @@ void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
 }
 
 ServiceInstance *NamespaceManager::GetSvcInstance(NamespaceTask *task) {
-    std::map<NamespaceTask *, ServiceInstance*>::iterator iter = task_svc_instances_.find(task);
+    std::map<NamespaceTask *, ServiceInstance*>::iterator iter =
+                    task_svc_instances_.find(task);
     if (iter != task_svc_instances_.end()) {
         return iter->second;
     }
     return NULL;
 }
 
-void NamespaceManager::RegisterSvcInstance(NamespaceTask *task, ServiceInstance *svc_instance) {
+void NamespaceManager::RegisterSvcInstance(NamespaceTask *task,
+                                           ServiceInstance *svc_instance) {
     task_svc_instances_.insert(std::make_pair(task, svc_instance));
 }
 
 void NamespaceManager::UnRegisterSvcInstance(ServiceInstance *svc_instance) {
-    for (std::map<NamespaceTask *, ServiceInstance*>::iterator iter = task_svc_instances_.begin();
+    for (std::map<NamespaceTask *, ServiceInstance*>::iterator iter =
+                    task_svc_instances_.begin();
          iter != task_svc_instances_.end(); ++iter) {
         if (svc_instance == iter->second) {
             task_svc_instances_.erase(iter);
@@ -227,7 +237,8 @@ void NamespaceManager::UnRegisterSvcInstance(ServiceInstance *svc_instance) {
     }
 }
 
-void NamespaceManager::StartNetNS(ServiceInstance *svc_instance, NamespaceState *state, bool update) {
+void NamespaceManager::StartNetNS(ServiceInstance *svc_instance,
+                                  NamespaceState *state, bool update) {
     std::stringstream cmd_str;
 
     if (netns_cmd_.length() == 0) {
@@ -240,8 +251,10 @@ void NamespaceManager::StartNetNS(ServiceInstance *svc_instance, NamespaceState 
     cmd_str << " " << UuidToString(props.instance_id);
     cmd_str << " " << UuidToString(props.vmi_inside);
     cmd_str << " " << UuidToString(props.vmi_outside);
-    cmd_str << " --vmi-left-ip " << props.ip_addr_inside << "/" << props.ip_prefix_len_inside;
-    cmd_str << " --vmi-right-ip " << props.ip_addr_outside << "/" << props.ip_prefix_len_outside;
+    cmd_str << " --vmi-left-ip " << props.ip_addr_inside << "/";
+    cmd_str << props.ip_prefix_len_inside;
+    cmd_str << " --vmi-right-ip " << props.ip_addr_outside << "/";
+    cmd_str << props.ip_prefix_len_outside;
     cmd_str << " --vmi-left-mac " << props.mac_addr_inside;
     cmd_str << " --vmi-right-mac " << props.mac_addr_outside;
 
@@ -251,16 +264,18 @@ void NamespaceManager::StartNetNS(ServiceInstance *svc_instance, NamespaceState 
     state->set_properties(props);
 
     NamespaceTask *task = new NamespaceTask(cmd_str.str(), evm_);
-    task->set_on_error_cb(boost::bind(&NamespaceManager::OnError, this, _1, _2));
+    task->set_on_error_cb(boost::bind(&NamespaceManager::OnError,
+                                      this, _1, _2));
 
     RegisterSvcInstance(task, svc_instance);
     boost::uuids::uuid uuid = svc_instance->properties().instance_id;
     Enqueue(task, uuid);
 }
 
-void NamespaceManager::OnError(NamespaceTask *task, const std::string errors) {
+void NamespaceManager::OnError(NamespaceTask *task,
+                               const std::string errors) {
     ServiceInstance *svc_instance = GetSvcInstance(task);
-    if (! svc_instance) {
+    if (!svc_instance) {
         return;
     }
 
@@ -270,7 +285,8 @@ void NamespaceManager::OnError(NamespaceTask *task, const std::string errors) {
     }
 }
 
-void NamespaceManager::StopNetNS(ServiceInstance *svc_instance, NamespaceState *state) {
+void NamespaceManager::StopNetNS(ServiceInstance *svc_instance,
+                                 NamespaceState *state) {
     std::stringstream cmd_str;
 
     if (netns_cmd_.length() == 0) {
@@ -316,7 +332,8 @@ void NamespaceManager::EventObserver(
 
             StartNetNS(svc_instance, state, false);
         } else if (state->status_type() == NamespaceState::Error ||
-                   state->properties().CompareTo(svc_instance->properties()) != 0) {
+                   state->properties().CompareTo(
+                                   svc_instance->properties()) != 0) {
             /*
              * a previous instance has been started but is in a fail state,
              * so try to restart it
@@ -351,10 +368,12 @@ void NamespaceState::Clear() {
  * NamespaceTask class
  */
 NamespaceTask::NamespaceTask(const std::string &cmd, EventManager *evm) :
-        cmd_(cmd), errors_(*(evm->io_service())), is_running_(false), pid_(0), start_time_(0) {
+        cmd_(cmd), errors_(*(evm->io_service())), is_running_(false),
+        pid_(0), start_time_(0) {
 }
 
-void NamespaceTask::ReadErrors(const boost::system::error_code &ec, size_t read_bytes) {
+void NamespaceTask::ReadErrors(const boost::system::error_code &ec,
+                               size_t read_bytes) {
     if (read_bytes) {
         errors_data_ << rx_buff_;
     }
@@ -367,17 +386,22 @@ void NamespaceTask::ReadErrors(const boost::system::error_code &ec, size_t read_
         if (errors.length() > 0) {
             LOG(ERROR, errors);
 
-            if (! on_error_cb_.empty()) {
+            if (!on_error_cb_.empty()) {
                 on_error_cb_(this, errors);
             }
         }
         errors_data_.clear();
-    } else {
-        bzero(rx_buff_, sizeof(rx_buff_));
-        boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
-                boost::bind(&NamespaceTask::ReadErrors, this, boost::asio::placeholders::error,
-                        boost::asio::placeholders::bytes_transferred));
+
+        return;
     }
+
+    bzero(rx_buff_, sizeof(rx_buff_));
+    boost::asio::async_read(
+                    errors_,
+                    boost::asio::buffer(rx_buff_, kBufLen),
+                    boost::bind(&NamespaceTask::ReadErrors,
+                                this, boost::asio::placeholders::error,
+                                boost::asio::placeholders::bytes_transferred));
 }
 
 void NamespaceTask::Stop() {
@@ -435,8 +459,9 @@ pid_t NamespaceTask::Run() {
 
     bzero(rx_buff_, sizeof(rx_buff_));
     boost::asio::async_read(errors_, boost::asio::buffer(rx_buff_, kBufLen),
-            boost::bind(&NamespaceTask::ReadErrors, this, boost::asio::placeholders::error,
-                    boost::asio::placeholders::bytes_transferred));
+            boost::bind(&NamespaceTask::ReadErrors,
+                        this, boost::asio::placeholders::error,
+                        boost::asio::placeholders::bytes_transferred));
 
     return pid_;
 }

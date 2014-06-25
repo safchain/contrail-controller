@@ -18,32 +18,35 @@ class EventManager;
 class NamespaceState;
 class NamespaceTask;
 
-
 /*
  * Starts and stops network namespaces corresponding to service-instances.
  */
 class NamespaceManager {
-public:
+ public:
     static const int kTimeoutDefault = 30;
     static const int kWorkersDefault = 1;
 
     typedef std::queue<NamespaceTask *> TaskQueue;
     NamespaceManager(EventManager *evm);
 
-    void Initialize(DB *database, AgentSignal *signal, const std::string &netns_cmd,
-            const int netns_workers, const int netns_timeout);
+    void Initialize(DB *database, AgentSignal *signal,
+                    const std::string &netns_cmd, const int netns_workers,
+                    const int netns_timeout);
     void Terminate();
 
-private:
+ private:
     friend class NamespaceManagerTest;
 
-    void HandleSigChild(const boost::system::error_code& error, int sig, pid_t pid, int status);
+    void HandleSigChild(const boost::system::error_code& error, int sig,
+                        pid_t pid, int status);
     void RegisterSigHandler();
     void InitSigHandler(AgentSignal *signal);
-    void StartNetNS(ServiceInstance *svc_instance, NamespaceState *state, bool update);
+    void StartNetNS(ServiceInstance *svc_instance, NamespaceState *state,
+                    bool update);
     void StopNetNS(ServiceInstance *svc_instance, NamespaceState *state);
     void OnError(NamespaceTask *task, const std::string errors);
-    void RegisterSvcInstance(NamespaceTask *task, ServiceInstance *svc_instance);
+    void RegisterSvcInstance(NamespaceTask *task,
+                             ServiceInstance *svc_instance);
     void UnRegisterSvcInstance(ServiceInstance *svc_instance);
     ServiceInstance *GetSvcInstance(NamespaceTask *task);
 
@@ -74,7 +77,7 @@ private:
 
 class NamespaceState : public DBState {
 
-public:
+ public:
     enum StatusType {
         Starting = 1,
         Started,
@@ -86,29 +89,51 @@ public:
 
     NamespaceState();
 
-    void set_pid(const pid_t &pid) { pid_ = pid; }
-    pid_t pid() const { return pid_; }
+    void set_pid(const pid_t &pid) {
+        pid_ = pid;
+    }
+    pid_t pid() const {
+        return pid_;
+    }
 
-    void set_status(const int status) { status_ = status; }
-    pid_t status() const { return status_; }
+    void set_status(const int status) {
+        status_ = status;
+    }
+    pid_t status() const {
+        return status_;
+    }
 
-    void set_errors(const std::string &errors) { errors_ = errors; }
-    std::string errors() const { return errors_; }
+    void set_errors(const std::string &errors) {
+        errors_ = errors;
+    }
+    std::string errors() const {
+        return errors_;
+    }
 
-    void set_cmd(const std::string &cmd) { cmd_ = cmd; }
-    std::string cmd() const { return cmd_; }
+    void set_cmd(const std::string &cmd) {
+        cmd_ = cmd;
+    }
+    std::string cmd() const {
+        return cmd_;
+    }
 
     void set_properties(const ServiceInstance::Properties &properties) {
         properties_ = properties;
     }
-    const ServiceInstance::Properties &properties() const { return properties_; }
+    const ServiceInstance::Properties &properties() const {
+        return properties_;
+    }
 
-    void set_status_type(const int status) { status_type_ = status; }
-    int status_type() const { return status_type_; }
+    void set_status_type(const int status) {
+        status_type_ = status;
+    }
+    int status_type() const {
+        return status_type_;
+    }
 
     void Clear();
 
-private:
+ private:
     pid_t pid_;
     int status_;
     std::string errors_;
@@ -121,9 +146,9 @@ private:
 };
 
 class NamespaceTask {
-public:
+ public:
     static const size_t kBufLen = 4098;
-    typedef boost::function<void (NamespaceTask *task, const std::string errors)> OnErrorCallback;
+    typedef boost::function<void(NamespaceTask *task, const std::string errors)> OnErrorCallback;
 
     NamespaceTask(const std::string &cmd, EventManager *evm);
 
@@ -132,15 +157,25 @@ public:
     void Stop();
     void Terminate();
 
-    bool is_running() const { return is_running_; }
-    pid_t pid() const { return pid_; }
+    bool is_running() const {
+        return is_running_;
+    }
+    pid_t pid() const {
+        return pid_;
+    }
 
-    time_t start_time() const { return start_time_; }
-    void set_on_error_cb(OnErrorCallback cb) { on_error_cb_ = cb; }
+    time_t start_time() const {
+        return start_time_;
+    }
+    void set_on_error_cb(OnErrorCallback cb) {
+        on_error_cb_ = cb;
+    }
 
-    const std::string &cmd() const { return cmd_; }
+    const std::string &cmd() const {
+        return cmd_;
+    }
 
-private:
+ private:
     const std::string cmd_;
 
     boost::asio::posix::stream_descriptor errors_;
