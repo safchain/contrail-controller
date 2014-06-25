@@ -944,11 +944,6 @@ class DBInterface(object):
     def _subnet_vnc_read_mapping(self, id=None, key=None):
         if id:
             try:
-                return self._db_cache['q_subnet_maps'][id]
-                #raise KeyError
-            except KeyError:
-                pass
-            try:
                 subnet_key = self._vnc_lib.kv_retrieve(id)
                 self._db_cache['q_subnet_maps'][id] = subnet_key
                 return subnet_key
@@ -958,13 +953,9 @@ class DBInterface(object):
                 bottle.abort(404, json.dumps(exc_info))
 
         if key:
-            try:
-                return self._db_cache['q_subnet_maps'][key]
-                #raise KeyError
-            except KeyError:
-                subnet_id = self._vnc_lib.kv_retrieve(key)
-                self._db_cache['q_subnet_maps'][key] = subnet_id
-                return subnet_id
+            subnet_id = self._vnc_lib.kv_retrieve(key)
+            self._db_cache['q_subnet_maps'][key] = subnet_id
+            return subnet_id
 
     #end _subnet_vnc_read_mapping
 
@@ -1465,7 +1456,7 @@ class DBInterface(object):
             alloc_pools = None
 
         dhcp_option_list = None
-        if subnet_q['dns_nameservers'] != attr.ATTR_NOT_SPECIFIED:
+        if subnet_q['dns_nameservers']:
             dhcp_options=[]
             for dns_server in subnet_q['dns_nameservers']:
                 dhcp_options.append(DhcpOptionType(dhcp_option_name='6',
@@ -1474,7 +1465,7 @@ class DBInterface(object):
                 dhcp_option_list = DhcpOptionsListType(dhcp_options)
 
         host_route_list = None
-        if subnet_q['host_routes'] != attr.ATTR_NOT_SPECIFIED:
+        if subnet_q['host_routes']:
             host_routes=[]
             for host_route in subnet_q['host_routes']:
                 host_routes.append(RouteType(prefix=host_route['destination'],
@@ -1483,6 +1474,7 @@ class DBInterface(object):
                 host_route_list = RouteTableType(host_routes)
 
         dhcp_config = subnet_q['enable_dhcp']
+        sn_name=subnet_q.get('name')
         subnet_vnc = IpamSubnetType(subnet=SubnetType(pfx, pfx_len),
                                     default_gateway=default_gw,
                                     enable_dhcp=dhcp_config,
@@ -1490,14 +1482,19 @@ class DBInterface(object):
                                     allocation_pools=alloc_pools,
                                     addr_from_start=True,
                                     dhcp_option_list=dhcp_option_list,
-                                    host_routes=host_route_list)
+                                    host_routes=host_route_list,
+                                    subnet_name=sn_name)
 
         return subnet_vnc
     #end _subnet_neutron_to_vnc
 
     def _subnet_vnc_to_neutron(self, subnet_vnc, net_obj, ipam_fq_name):
         sn_q_dict = {}
-        sn_q_dict['name'] = ''
+        sn_name = subnet_vnc.get_subnet_name()
+        if sn_name is not None:
+            sn_q_dict['name'] = sn_name
+        else:
+            sn_q_dict['name'] = ''
         sn_q_dict['tenant_id'] = net_obj.parent_uuid.replace('-', '')
         sn_q_dict['network_id'] = net_obj.uuid
         sn_q_dict['ip_version'] = 4  # TODO ipv6?
@@ -1796,6 +1793,11 @@ class DBInterface(object):
                 mac_addrs_obj = MacAddressesType()
                 mac_addrs_obj.set_mac_address(port_q['mac_address'])
                 port_obj.set_virtual_machine_interface_mac_addresses(mac_addrs_obj)
+            port_obj.set_security_group_list([])
+            if ('security_groups' not in port_q or
+                port_q['security_groups'].__class__ is object):
+                sg_obj = SecurityGroup("default", proj_obj)
+                port_obj.add_security_group(sg_obj)
         else:  # READ/UPDATE/DELETE
             port_obj = self._virtual_machine_interface_read(
                 port_id=port_q['id'], fields=['instance_ip_back_refs',
@@ -1813,6 +1815,7 @@ class DBInterface(object):
 
         if ('security_groups' in port_q and
             port_q['security_groups']):
+            port_obj.set_security_group_list([])
             for sg_id in port_q['security_groups']:
                 # TODO optimize to not read sg (only uuid/fqn needed)
                 sg_obj = self._vnc_lib.security_group_read(id=sg_id)
@@ -1948,12 +1951,6 @@ class DBInterface(object):
         #if fields and (len(fields) == 1) and fields[0] == 'tenant_id':
         #    tenant_id = self._get_obj_tenant_id('network', net_uuid)
         #    return {'id': net_uuid, 'tenant_id': tenant_id}
-
-        try:
-            # return self._db_cache['q_networks']['net_uuid']
-            raise KeyError
-        except KeyError:
-            pass
 
         try:
             net_obj = self._network_read(net_uuid)
@@ -2138,9 +2135,13 @@ class DBInterface(object):
             domain_obj = Domain(domain_name)
             project_obj = Project(project_name, domain_obj)
             netipam_obj = NetworkIpam(ipam_name, project_obj)
-        else:  # link subnet with default ipam
-            project_obj = Project(net_obj.parent_name)
-            netipam_obj = NetworkIpam(project_obj=project_obj)
+        else:  # link with project's default ipam or global default ipam
+            try:
+                ipam_fq_name = net_obj.get_fq_name()[:-1]
+                ipam_fq_name.append('default-network-ipam')
+                netipam_obj = self._vnc_lib.network_ipam_read(fq_name=ipam_fq_name)
+            except NoIdError:
+                netipam_obj = NetworkIpam()
             ipam_fq_name = netipam_obj.get_fq_name()
 
         subnet_vnc = self._subnet_neutron_to_vnc(subnet_q)
@@ -2189,12 +2190,6 @@ class DBInterface(object):
     #end subnet_create
 
     def subnet_read(self, subnet_id):
-        try:
-            # return self._db_cache['q_subnets'][subnet_id]
-            raise KeyError
-        except KeyError:
-            pass
-
         subnet_key = self._subnet_vnc_read_mapping(id=subnet_id)
         net_id = subnet_key.split()[0]
 
@@ -2485,12 +2480,6 @@ class DBInterface(object):
         if fields and (len(fields) == 1) and fields[0] == 'tenant_id':
             tenant_id = self._get_obj_tenant_id('router', rtr_uuid)
             return {'id': rtr_uuid, 'tenant_id': tenant_id}
-
-        try:
-            # return self._db_cache['q_routers']['rtr_uuid']
-            raise KeyError
-        except KeyError:
-            pass
 
         try:
             rtr_obj = self._logical_router_read(rtr_uuid)
@@ -2906,12 +2895,6 @@ class DBInterface(object):
     # TODO add obj param and let caller use below only as a converter
     def port_read(self, port_id):
         try:
-            # return self._db_cache['q_ports'][port_id]
-            raise KeyError
-        except KeyError:
-            pass
-
-        try:
             port_obj = self._virtual_machine_interface_read(port_id=port_id)
         except NoIdError:
             raise exceptions.PortNotFound(port_id=port_id)
@@ -3106,7 +3089,14 @@ class DBInterface(object):
             if 'network_id' in filters:
                 ret_q_ports = self._port_list_network(filters['network_id'])
 
-            return ret_q_ports
+            # prune phase
+            ret_list = []
+            for port_obj in ret_q_ports:
+                if not self._filters_is_present(filters, 'name',
+                                                port_obj['q_api_data']['name']):
+                    continue
+                ret_list.append(port_obj)
+            return ret_list
 
         # Listing from parent to children
         device_ids = filters['device_id']

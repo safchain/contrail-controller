@@ -54,6 +54,8 @@ const uint8_t Agent::vrrp_mac_[] = {0x00, 0x00, 0x5E, 0x00, 0x01, 0x00};
 const std::string Agent::bcast_mac_ = "FF:FF:FF:FF:FF:FF";
 const std::string Agent::config_file_ = "/etc/contrail/contrail-vrouter-agent.conf";
 const std::string Agent::log_file_ = "/var/log/contrail/vrouter.log";
+const std::string Agent::xmpp_dns_server_connection_name_prefix_ = "dns-server:";
+const std::string Agent::xmpp_control_node_connection_name_prefix_ = "control-node:";
 
 Agent *Agent::singleton_;
 
@@ -257,13 +259,10 @@ void Agent::InitCollector() {
                            g_vns_constants.NodeTypeNames.find(node_type)->second,
                            g_vns_constants.INSTANCE_ID_DEFAULT,
                            event_manager(),
-                           params_->http_server_port());
+                           params_->http_server_port(), 0,
+                           params_->collector_server_list(),
+                           NULL);
 
-    if (params_->collector_port() != 0 && 
-        params_->collector().to_ulong() != 0) {
-        Sandesh::ConnectToCollector(params_->collector().to_string(),
-                                    params_->collector_port());
-    }
 }
 
 static bool interface_exist(string &name) {
@@ -340,7 +339,8 @@ Agent::Agent() :
     mirror_src_udp_port_(0), lifetime_manager_(NULL), 
     ksync_sync_mode_(true), mgmt_ip_(""),
     vxlan_network_identifier_mode_(AUTOMATIC), headless_agent_mode_(false), 
-    debug_(false), test_mode_(false), init_done_(false) {
+    connection_state_(NULL), debug_(false), test_mode_(false),
+    init_done_(false) {
 
     assert(singleton_ == NULL);
     singleton_ = this;

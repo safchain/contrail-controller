@@ -326,18 +326,6 @@ class VncApiServer(VncApiServerGen):
             self._db_connect(self._args.reset_config)
             self._db_init_entries()
 
-        # recreate subnet operating state from DB
-        (ok, vn_fq_names_uuids) = self._db_conn.dbe_list('virtual-network')
-        for vn_fq_name, vn_uuid in vn_fq_names_uuids:
-            try:
-                (ok, vn_dict) = self._db_conn.dbe_read(
-                    'virtual-network', {'uuid': vn_uuid})
-                if ok:
-                    self._addr_mgmt.net_create(vn_dict)
-            except Exception as e:
-                # TODO log
-                pass
-
         # Cpuinfo interface
         sysinfo_req = True
         config_node_ip = self.get_server_ip()
@@ -435,7 +423,7 @@ class VncApiServer(VncApiServerGen):
             if not ok:
                 (code, msg) = put_result
                 self.config_object_error(obj_uuid, None, obj_type, 'ref_update', msg)
-                abort(code, msg)
+                bottle.abort(code, msg)
         obj_type = obj_type.replace('-', '_')
         try:
             id = self._db_conn.ref_update(obj_type, obj_uuid, ref_type, ref_uuid, {'attr': attr}, operation)
@@ -574,7 +562,7 @@ class VncApiServer(VncApiServerGen):
             'wipe_config': False,
             'listen_ip_addr': _WEB_HOST,
             'listen_port': _WEB_PORT,
-            'ifmap_server_ip': _WEB_HOST,
+            'ifmap_server_ip': '127.0.0.1',
             'ifmap_server_port': "8443",
             'collectors': None,
             'http_server_port': '8084',
@@ -585,7 +573,7 @@ class VncApiServer(VncApiServerGen):
             'logging_level': 'WARN',
             'multi_tenancy': False,
             'disc_server_ip': None,
-            'disc_server_port': None,
+            'disc_server_port': '5998',
             'zk_server_ip': '127.0.0.1:2181',
             'worker_id': '0',
             'rabbit_server': 'localhost',
@@ -846,14 +834,14 @@ class VncApiServer(VncApiServerGen):
 
         self._db_conn.db_resync(workers=self._args.resync_workers)
         try:
-            self._extension_mgrs['resync'].map(self._resync_projects)
+            self._extension_mgrs['resync'].map(self._resync_domains_projects)
         except Exception as e:
             pass
     # end _db_init_entries
 
-    def _resync_projects(self, ext):
-        ext.obj.resync_projects()
-    # end _resync_projects
+    def _resync_domains_projects(self, ext):
+        ext.obj.resync_domains_projects()
+    # end _resync_domains_projects
 
     def _create_singleton_entry(self, singleton_obj):
         s_obj = singleton_obj
