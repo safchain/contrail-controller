@@ -24,6 +24,9 @@ class NamespaceTask;
  */
 class NamespaceManager {
 public:
+    static const int kTimeoutDefault = 30;
+    static const int kWorkersDefault = 1;
+
     typedef std::queue<NamespaceTask *> TaskQueue;
     NamespaceManager(EventManager *evm);
 
@@ -47,17 +50,17 @@ private:
     TaskQueue *GetTaskQueue(const std::string &str);
     void Enqueue(NamespaceTask *task, const boost::uuids::uuid &uuid);
     void ScheduleNextTask(TaskQueue *task_queue);
-    void ScheduleNextTasks();
 
     NamespaceState *GetState(ServiceInstance *);
+    NamespaceState *GetState(NamespaceTask* task);
     void SetState(ServiceInstance *svc_instance, NamespaceState *state);
     void ClearState(ServiceInstance *svc_instance);
+    void UpdateStateStatusType(NamespaceTask* task, int status);
 
     /*
      * Event observer for changes in the "db.service-instance.0" table.
      */
     void EventObserver(DBTablePartBase *db_part, DBEntryBase *entry);
-    void UpdateState(NamespaceTask* task, int status);
 
     EventManager *evm_;
     DBTableBase *si_table_;
@@ -89,11 +92,11 @@ public:
     void set_status(const int status) { status_ = status; }
     pid_t status() const { return status_; }
 
-    void set_last_errors(const std::string &errors) { last_errors_ = errors; }
-    std::string last_errors() const { return last_errors_; }
+    void set_errors(const std::string &errors) { errors_ = errors; }
+    std::string errors() const { return errors_; }
 
-    void set_last_cmd(const std::string &cmd) { last_cmd_ = cmd; }
-    std::string last_cmd() const { return last_cmd_; }
+    void set_cmd(const std::string &cmd) { cmd_ = cmd; }
+    std::string cmd() const { return cmd_; }
 
     void set_properties(const ServiceInstance::Properties &properties) {
         properties_ = properties;
@@ -108,8 +111,8 @@ public:
 private:
     pid_t pid_;
     int status_;
-    std::string last_errors_;
-    std::string last_cmd_;
+    std::string errors_;
+    std::string cmd_;
     int status_type_;
 
     ServiceInstance::Properties properties_;
@@ -125,7 +128,7 @@ public:
     NamespaceTask(const std::string &cmd, EventManager *evm);
 
     void ReadErrors(const boost::system::error_code &ec, size_t read_bytes);
-    bool Run();
+    pid_t Run();
     void Stop();
     void Terminate();
 

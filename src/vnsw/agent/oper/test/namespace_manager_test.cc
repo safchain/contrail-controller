@@ -30,7 +30,7 @@ public:
     }
 
     bool IsUpdateCommand(NamespaceState *state) {
-        return std::string::npos != state->last_cmd().find("--update");
+        return std::string::npos != state->cmd().find("--update");
     }
 
     bool WaitForAWhile(time_t target) {
@@ -49,6 +49,10 @@ protected:
             si_table_(NULL) {
     }
 
+    ~NamespaceManagerTest() {
+        delete agent_signal_;
+    }
+
     virtual void SetUp() {
         IFMapAgentLinkTable_Init(&database_, &graph_);
         vnc_cfg_Agent_ModuleInit(&database_, &graph_);
@@ -59,6 +63,9 @@ protected:
             database_.CreateTable("db.service-instance.0"));
         si_table_->Initialize(&graph_, dependency_manager_.get());
         agent_signal_->Initialize();
+
+        boost::uuids::random_generator gen;
+        instance_id_ = gen();
     }
 
     virtual void TearDown() {
@@ -106,6 +113,16 @@ protected:
         return instance_id;
     }
 
+    void MarkServiceInstanceAsDeleted(boost::uuids::uuid id) {
+        ServiceInstanceKey key(id);
+        ServiceInstance *svc_instance =
+                static_cast<ServiceInstance *>(si_table_->Find(&key, true));
+        if (svc_instance != NULL) {
+            svc_instance->MarkDelete();
+            si_table_->Change(svc_instance);
+        }
+    }
+
     bool UpdateProperties(boost::uuids::uuid id) {
         ServiceInstanceKey key(id);
         ServiceInstance *svc_instance =
@@ -118,10 +135,18 @@ protected:
         return true;
     }
 
-    NamespaceState *ServiceInstanceState(boost::uuids::uuid id) {
+    ServiceInstance *GetServiceInstance(boost::uuids::uuid id) {
         ServiceInstanceKey key(id);
         ServiceInstance *svc_instance =
                 static_cast<ServiceInstance *>(si_table_->Find(&key, true));
+        if (svc_instance == NULL) {
+            return NULL;
+        }
+        return svc_instance;
+    }
+
+    NamespaceState *ServiceInstanceState(boost::uuids::uuid id) {
+        ServiceInstance *svc_instance = GetServiceInstance(id);
         if (svc_instance == NULL) {
             return NULL;
         }
@@ -129,13 +154,19 @@ protected:
     }
 
     NamespaceManager::TaskQueue *GetTaskQueue(boost::uuids::uuid id) {
+        ServiceInstance *svc_instance = GetServiceInstance(id);
+        if (svc_instance == NULL) {
+            return NULL;
+        }
+
         std::stringstream ss;
-        ss << id;
+        ss << svc_instance->properties().instance_id;
         return ns_manager_->GetTaskQueue(ss.str());
     }
 
-    void ScheduleTasks() {
-        ns_manager_->ScheduleNextTasks();
+    void TriggerSigChild(pid_t pid, int status) {
+        boost::system::error_code ec;
+        ns_manager_->HandleSigChild(ec, SIGCHLD, pid, status);
     }
 
     void UpdateProperties(ServiceInstance* svc_instance) {
@@ -146,7 +177,7 @@ protected:
         prop.Clear();
         prop.virtualization_type = ServiceInstance::NetworkNamespace;
         boost::uuids::random_generator gen;
-        prop.instance_id = gen();
+        prop.instance_id = instance_id_;
         prop.vmi_inside = gen();
         prop.vmi_outside = gen();
         prop.ip_addr_inside = "10.0.0.1";
@@ -165,6 +196,7 @@ protected:
     std::auto_ptr<NamespaceManager> ns_manager_;
     AgentSignal *agent_signal_;
     ServiceInstanceTable *si_table_;
+    boost::uuids::uuid instance_id_;
 };
 
 TEST_F(NamespaceManagerTest, ExecTrue) {
@@ -177,14 +209,17 @@ TEST_F(NamespaceManagerTest, ExecTrue) {
 
     EXPECT_EQ(0, ns_state->status());
     EXPECT_EQ(NamespaceState::Starting, ns_state->status_type());
+    EXPECT_NE(0, ns_state->pid());
 
     task_util::WaitForCondition(&evm_,
             boost::bind(&NamespaceManagerTest::IsExpectedStatusType, this, ns_state, NamespaceState::Started),
             kTimeoutSeconds);
-    task_util::WaitForIdle();
 
     EXPECT_EQ(NamespaceState::Started, ns_state->status_type());
     EXPECT_EQ(0, ns_state->status());
+
+    MarkServiceInstanceAsDeleted(id);
+    task_util::WaitForIdle();
 }
 
 TEST_F(NamespaceManagerTest, ExecFalse) {
@@ -201,10 +236,12 @@ TEST_F(NamespaceManagerTest, ExecFalse) {
     task_util::WaitForCondition(&evm_,
             boost::bind(&NamespaceManagerTest::IsExpectedStatusType, this, ns_state, NamespaceState::Error),
             kTimeoutSeconds);
-    task_util::WaitForIdle();
 
     EXPECT_EQ(NamespaceState::Error, ns_state->status_type());
     EXPECT_NE(0, ns_state->status());
+
+    MarkServiceInstanceAsDeleted(id);
+    task_util::WaitForIdle();
 }
 
 TEST_F(NamespaceManagerTest, Update) {
@@ -232,9 +269,11 @@ TEST_F(NamespaceManagerTest, Update) {
     task_util::WaitForCondition(&evm_,
             boost::bind(&NamespaceManagerTest::IsUpdateCommand, this, ns_state),
             kTimeoutSeconds);
-    task_util::WaitForIdle();
 
-    ASSERT_TRUE(IsUpdateCommand(ns_state));
+    EXPECT_TRUE(IsUpdateCommand(ns_state));
+
+    MarkServiceInstanceAsDeleted(id);
+    task_util::WaitForIdle();
 }
 
 TEST_F(NamespaceManagerTest, Timeout) {
@@ -252,11 +291,49 @@ TEST_F(NamespaceManagerTest, Timeout) {
     task_util::WaitForCondition(&evm_,
             boost::bind(&NamespaceManagerTest::WaitForAWhile, this, now + 2),
             kTimeoutSeconds);
+
+    bool updated = UpdateProperties(id);
+    EXPECT_EQ(true, updated);
     task_util::WaitForIdle();
 
-    ScheduleTasks();
-
     EXPECT_EQ(NamespaceState::Timeout, ns_state->status_type());
+
+    MarkServiceInstanceAsDeleted(id);
+    task_util::WaitForIdle();
+}
+
+TEST_F(NamespaceManagerTest, TaskQueue) {
+    static const int kNumUpdate = 5;
+    ns_manager_->Initialize(&database_, NULL, "/bin/true", 10, 1);
+    boost::uuids::uuid id = AddServiceInstance("exec-queue");
+    EXPECT_FALSE(id.is_nil());
+    task_util::WaitForIdle();
+    NamespaceState *ns_state = ServiceInstanceState(id);
+    ASSERT_TRUE(ns_state != NULL);
+
+    EXPECT_EQ(0, ns_state->status());
+    EXPECT_EQ(NamespaceState::Starting, ns_state->status_type());
+    NamespaceManager::TaskQueue *queue = GetTaskQueue(id);
+
+    EXPECT_EQ(1, queue->size());
+
+    for (int i = 0; i != kNumUpdate; i++) {
+        bool updated = UpdateProperties(id);
+        EXPECT_EQ(true, updated);
+        task_util::WaitForIdle();
+
+        EXPECT_EQ(i + 2, queue->size());
+    }
+
+    for (int i = 0; i != kNumUpdate; i++) {
+        TriggerSigChild(ns_state->pid(), 0);
+        task_util::WaitForIdle();
+
+        EXPECT_EQ(kNumUpdate - i, queue->size());
+    }
+
+    MarkServiceInstanceAsDeleted(id);
+    task_util::WaitForIdle();
 }
 
 static void SetUp() {
