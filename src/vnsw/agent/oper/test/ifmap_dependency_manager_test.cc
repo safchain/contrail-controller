@@ -235,9 +235,15 @@ TEST_F(IFMapDependencyManagerTest, VMIEvent) {
 
 
     task_util::WaitForIdle();
-    ASSERT_EQ(1, change_list_.size());
-    TestEntry *entry = static_cast<TestEntry *>(change_list_.at(0));
-    EXPECT_EQ("id-1", entry->name());
+    /*
+     * The number of notifications is not determistic.
+     */
+    ASSERT_LE(1, change_list_.size());
+    for (int i = 0; i < change_list_.size(); ++i) {
+        TestEntry *entry = static_cast<TestEntry *>(change_list_.at(i));
+        EXPECT_EQ("id-1", entry->name());
+    }
+    change_list_.clear();
 
     ifmap_test_util::IFMapMsgNodeAdd(&database_, "virtual-machine", "id-1");
     ifmap_test_util::IFMapMsgLink(&database_, "service-instance", "id-1",
@@ -254,9 +260,12 @@ TEST_F(IFMapDependencyManagerTest, VMIEvent) {
         "virtual-machine-interface-virtual-machine");
 
     task_util::WaitForIdle();
-    ASSERT_EQ(2, change_list_.size());
-    TestEntry *entry_2 = static_cast<TestEntry *>(change_list_.at(1));
-    EXPECT_EQ("id-1", entry_2->name());
+    ASSERT_LE(1, change_list_.size());
+    for (int i = 0; i < change_list_.size(); ++i) {
+        TestEntry *entry = static_cast<TestEntry *>(change_list_.at(i));
+        EXPECT_EQ("id-1", entry->name());
+    }
+    change_list_.clear();
 
     ifmap_test_util::IFMapMsgNodeAdd(&database_, "virtual-machine", "id-2");
     ifmap_test_util::IFMapMsgLink(&database_, "service-instance", "id-2",
@@ -273,9 +282,13 @@ TEST_F(IFMapDependencyManagerTest, VMIEvent) {
         "virtual-machine-interface-virtual-machine");
 
     task_util::WaitForIdle();
-    ASSERT_EQ(3, change_list_.size());
-    TestEntry *entry_3 = static_cast<TestEntry *>(change_list_.at(2));
-    EXPECT_EQ("id-2", entry_3->name());
+    ASSERT_LE(1, change_list_.size());
+    for (int i = 0; i < change_list_.size(); ++i) {
+        TestEntry *entry = static_cast<TestEntry *>(change_list_.at(i));
+        EXPECT_EQ("id-2", entry->name());
+    }
+    change_list_.clear();
+
 }
 
 static void SetUp() {
