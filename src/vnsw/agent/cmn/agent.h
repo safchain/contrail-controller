@@ -12,6 +12,7 @@
 class AgentParam;
 class AgentConfig;
 class AgentStats;
+class ConnectionState;
 class KSync;
 class AgentUve;
 class PktModule;
