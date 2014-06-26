@@ -12,23 +12,27 @@
 class EventManager;
 
 class AgentSignal {
-public:
+ public:
     AgentSignal(EventManager *evm);
     virtual ~AgentSignal();
 
-    typedef boost::function<void (const boost::system::error_code& error, int sig, pid_t pid, int status)> SignalChildHandler;
-    typedef boost::function<void (const boost::system::error_code& error, int sig)> SignalHandler;
+    typedef boost::function<
+                    void(const boost::system::error_code& error, int sig,
+                         pid_t pid, int status)> SignalChildHandler;
+    typedef boost::function<
+                    void(const boost::system::error_code& error, int sig)> SignalHandler;
 
     void Initialize();
     void Terminate();
     void RegisterHandler(SignalHandler handler);
     void RegisterChildHandler(SignalChildHandler handler);
 
-private:
+ private:
     void RegisterSigHandler();
     void HandleSig(const boost::system::error_code& error, int sig);
     void NotifyDefault(const boost::system::error_code &error, int sig);
-    void NotifySigChld(const boost::system::error_code &error, int sig, int pid, int status);
+    void NotifySigChld(const boost::system::error_code &error, int sig, int pid,
+                       int status);
 
     std::vector<SignalChildHandler> sigchld_callbacks_;
     std::vector<SignalHandler> default_callbacks_;
