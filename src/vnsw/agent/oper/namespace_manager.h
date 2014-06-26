@@ -17,6 +17,7 @@ class DB;
 class EventManager;
 class NamespaceState;
 class NamespaceTask;
+class NamespaceTaskQueue;
 
 /*
  * Starts and stops network namespaces corresponding to service-instances.
@@ -26,7 +27,6 @@ class NamespaceManager {
     static const int kTimeoutDefault = 30;
     static const int kWorkersDefault = 1;
 
-    typedef std::queue<NamespaceTask *> TaskQueue;
     NamespaceManager(EventManager *evm);
 
     void Initialize(DB *database, AgentSignal *signal,
@@ -50,9 +50,10 @@ class NamespaceManager {
     void UnRegisterSvcInstance(ServiceInstance *svc_instance);
     ServiceInstance *GetSvcInstance(NamespaceTask *task);
 
-    TaskQueue *GetTaskQueue(const std::string &str);
+    NamespaceTaskQueue *GetTaskQueue(const std::string &str);
     void Enqueue(NamespaceTask *task, const boost::uuids::uuid &uuid);
-    void ScheduleNextTask(TaskQueue *task_queue);
+    void ScheduleNextTask(NamespaceTaskQueue *task_queue);
+    bool StartTask(NamespaceTaskQueue *task_queue, NamespaceTask *task);
 
     NamespaceState *GetState(ServiceInstance *);
     NamespaceState *GetState(NamespaceTask* task);
@@ -71,7 +72,7 @@ class NamespaceManager {
     std::string netns_cmd_;
     int netns_timeout_;
 
-    std::vector<TaskQueue *> task_queues_;
+    std::vector<NamespaceTaskQueue *> task_queues_;
     std::map<NamespaceTask *, ServiceInstance *> task_svc_instances_;
 };
 
@@ -189,6 +190,35 @@ class NamespaceTask {
     OnErrorCallback on_error_cb_;
 
     time_t start_time_;
+};
+
+class NamespaceTaskQueue {
+public:
+    typedef boost::function<void(NamespaceTaskQueue *task_queue)> OnTimeoutCallback;
+    NamespaceTaskQueue(EventManager *evm);
+    ~NamespaceTaskQueue();
+
+    bool OnTimerTimeout();
+    void TimerErrorHandler(std::string name, std::string error);
+
+    NamespaceTask *Front() { return task_queue_.front(); }
+    void Pop() { task_queue_.pop(); }
+    bool Empty() { return task_queue_.empty(); }
+    void Push(NamespaceTask *task) { task_queue_.push(task); }
+    int Size() { return task_queue_.size(); }
+    void StartTimer(int time);
+    void StopTimer();
+    void Clear();
+
+    void set_on_timeout_cb(OnTimeoutCallback cb) {
+        on_timeout_cb_ = cb;
+    }
+
+private:
+    EventManager *evm_;
+    Timer *timeout_timer_;
+    std::queue<NamespaceTask *> task_queue_;
+    OnTimeoutCallback on_timeout_cb_;
 };
 
 #endif

@@ -50,9 +50,14 @@ void NamespaceManager::Initialize(DB *database, AgentSignal *signal,
     }
 
     task_queues_.resize(workers);
-    for (std::vector<TaskQueue *>::iterator iter = task_queues_.begin();
+    for (std::vector<NamespaceTaskQueue *>::iterator iter = task_queues_.begin();
          iter != task_queues_.end(); ++iter) {
-        *iter = new TaskQueue();
+        NamespaceTaskQueue *task_queue = new NamespaceTaskQueue(evm_);
+        assert(task_queue);
+        task_queue->set_on_timeout_cb(
+                        boost::bind(&NamespaceManager::ScheduleNextTask,
+                                    this, _1));
+        *iter = task_queue;
     }
 }
 
@@ -84,16 +89,18 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code &error,
          * check the head of each taskqueue in order to check whether there is
          * a task with the corresponding pid, if present dequeue it.
          */
-        for (std::vector<TaskQueue *>::iterator iter = task_queues_.begin();
+        for (std::vector<NamespaceTaskQueue *>::iterator iter = task_queues_.begin();
                  iter != task_queues_.end(); ++iter) {
-            TaskQueue *task_queue = *iter;
-            if (!task_queue->empty()) {
-                NamespaceTask *task = task_queue->front();
+            NamespaceTaskQueue *task_queue = *iter;
+            if (!task_queue->Empty()) {
+                NamespaceTask *task = task_queue->Front();
                 if (task->pid() == pid) {
                     UpdateStateStatusType(task, status);
 
-                    task_queue->pop();
+                    task_queue->Pop();
                     delete task;
+
+                    task_queue->StopTimer();
 
                     ScheduleNextTask(task_queue);
                     return;
@@ -135,18 +142,13 @@ void NamespaceManager::InitSigHandler(AgentSignal *signal) {
 void NamespaceManager::Terminate() {
     si_table_->Unregister(listener_id_);
 
-    TaskQueue *task_queue;
-    for (std::vector<TaskQueue *>::iterator iter = task_queues_.begin();
+    NamespaceTaskQueue *task_queue;
+    for (std::vector<NamespaceTaskQueue *>::iterator iter = task_queues_.begin();
          iter != task_queues_.end(); ++iter) {
         if ((task_queue = *iter) == NULL) {
             continue;
         }
-
-        while(!task_queue->empty()) {
-            NamespaceTask *task = task_queue->front();
-            task_queue->pop();
-            delete task;
-        }
+        task_queue->Clear();
 
         delete task_queue;
     }
@@ -156,59 +158,72 @@ void  NamespaceManager::Enqueue(NamespaceTask *task,
                                 const boost::uuids::uuid &uuid) {
     std::stringstream ss;
     ss << uuid;
-    TaskQueue *task_queue = GetTaskQueue(ss.str());
-    task_queue->push(task);
+    NamespaceTaskQueue *task_queue = GetTaskQueue(ss.str());
+    task_queue->Push(task);
     ScheduleNextTask(task_queue);
 }
 
-NamespaceManager::TaskQueue *NamespaceManager::GetTaskQueue(
+NamespaceTaskQueue *NamespaceManager::GetTaskQueue(
                 const std::string &str) {
     boost::hash<std::string> hash;
     int index = hash(str) % task_queues_.capacity();
     return task_queues_[index];
 }
 
-void NamespaceManager::ScheduleNextTask(TaskQueue *task_queue) {
-    while (!task_queue->empty()) {
-        NamespaceTask *task = task_queue->front();
+bool NamespaceManager::StartTask(NamespaceTaskQueue *task_queue,
+                                 NamespaceTask *task) {
+    NamespaceState *state = GetState(task);
+    assert(state);
+    state->set_cmd(task->cmd());
+    state->set_status_type(NamespaceState::Starting);
+
+    pid_t pid = task->Run();
+    state->set_pid(pid);
+
+    if (pid > 0) {
+        task_queue->StartTimer(netns_timeout_ * 1000);
+        return true;
+    }
+
+    task_queue->Pop();
+    delete task;
+
+    return false;
+}
+
+void NamespaceManager::ScheduleNextTask(NamespaceTaskQueue *task_queue) {
+    while (!task_queue->Empty()) {
+        NamespaceTask *task = task_queue->Front();
         if (!task->is_running()) {
-            NamespaceState *state = GetState(task);
-            assert(state);
-            state->set_cmd(task->cmd());
-            state->set_status_type(NamespaceState::Starting);
-
-            pid_t pid = task->Run();
-            state->set_pid(pid);
-
-            if (pid > 0) {
+            bool starting = StartTask(task_queue, task);
+            if (starting) {
                 return;
             }
-
-            task_queue->pop();
-            delete task;
         } else {
             int delay = time(NULL) - task->start_time();
-            if (delay > netns_timeout_) {
-                NamespaceState *state = GetState(task);
-                assert(state);
-                state->set_status_type(NamespaceState::Timeout);
-
-                std::stringstream ss;
-                ss << "Timeout " << delay << " > " << netns_timeout_ << ", ";
-                ss << task->cmd();
-                LOG(ERROR, ss.str());
-
-                if (delay > (netns_timeout_ * 2)) {
-                    task->Terminate();
-                    task_queue->pop();
-
-                    delete task;
-                    continue;
-                } else {
-                    task->Stop();
-                }
+            if (delay < netns_timeout_) {
+               return;
             }
-            return;
+            NamespaceState *state = GetState(task);
+            assert(state);
+            state->set_status_type(NamespaceState::Timeout);
+
+            std::stringstream ss;
+            ss << "Timeout " << delay << " > " << netns_timeout_ << ", ";
+            ss << task->cmd();
+            LOG(ERROR, ss.str());
+
+            if (delay > (netns_timeout_ * 2)) {
+               task->Terminate();
+
+               task_queue->StopTimer();
+               task_queue->Pop();
+
+               delete task;
+            } else {
+               task->Stop();
+               return;
+            }
         }
     }
 }
@@ -464,4 +479,55 @@ pid_t NamespaceTask::Run() {
                         boost::asio::placeholders::bytes_transferred));
 
     return pid_;
+}
+
+/*
+ *
+ */
+NamespaceTaskQueue::NamespaceTaskQueue(EventManager *evm) : evm_(evm),
+                timeout_timer_(TimerManager::CreateTimer(
+                               *evm_->io_service(),
+                               "Namespace Manager Task Timeout",
+                               TaskScheduler::GetInstance()->GetTaskId(
+                                               "db::DBTable"), 0)) {
+}
+
+NamespaceTaskQueue::~NamespaceTaskQueue() {
+    TimerManager::DeleteTimer(timeout_timer_);
+}
+
+void NamespaceTaskQueue::StartTimer(int time) {
+    timeout_timer_->Start(time,
+                          boost::bind(&NamespaceTaskQueue::OnTimerTimeout,
+                                      this),
+                          boost::bind(&NamespaceTaskQueue::TimerErrorHandler,
+                                      this, _1, _2));
+}
+
+void NamespaceTaskQueue::StopTimer() {
+    timeout_timer_->Cancel();
+}
+
+bool NamespaceTaskQueue::OnTimerTimeout() {
+    if (! on_timeout_cb_.empty()) {
+        on_timeout_cb_(this);
+    }
+
+    return true;
+}
+
+void NamespaceTaskQueue::TimerErrorHandler(std::string name, std::string error) {
+    std::stringstream ss;
+    ss << "Error during a Namespace task timeout, " << error;
+    LOG(ERROR, ss.str());
+}
+
+void NamespaceTaskQueue::Clear() {
+    timeout_timer_->Cancel();
+
+    while(!task_queue_.empty()) {
+        NamespaceTask *task = task_queue_.front();
+        task_queue_.pop();
+        delete task;
+    }
 }
