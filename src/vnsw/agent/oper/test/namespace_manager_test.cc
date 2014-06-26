@@ -169,6 +169,14 @@ protected:
         ns_manager_->HandleSigChild(ec, SIGCHLD, pid, status);
     }
 
+    void NotifyChange(boost::uuids::uuid id) {
+        ServiceInstance *svc_instance = GetServiceInstance(id);
+        if (svc_instance == NULL) {
+            return;
+        }
+        si_table_->Change(svc_instance);
+    }
+
     void UpdateProperties(ServiceInstance* svc_instance) {
         /*
          * Set non-nil uuids
@@ -258,7 +266,6 @@ TEST_F(NamespaceManagerTest, Update) {
     task_util::WaitForCondition(&evm_,
             boost::bind(&NamespaceManagerTest::IsExpectedStatusType, this, ns_state, NamespaceState::Started),
             kTimeoutSeconds);
-    task_util::WaitForIdle();
 
     EXPECT_EQ(NamespaceState::Started, ns_state->status_type());
     EXPECT_EQ(0, ns_state->status());
@@ -271,6 +278,40 @@ TEST_F(NamespaceManagerTest, Update) {
             kTimeoutSeconds);
 
     EXPECT_TRUE(IsUpdateCommand(ns_state));
+
+    MarkServiceInstanceAsDeleted(id);
+    task_util::WaitForIdle();
+}
+
+TEST_F(NamespaceManagerTest, UpdateProperties) {
+    ns_manager_->Initialize(&database_, agent_signal_, "/bin/true", 1, 10);
+    boost::uuids::uuid id = AddServiceInstance("exec-update");
+    EXPECT_FALSE(id.is_nil());
+    task_util::WaitForIdle();
+    NamespaceState *ns_state = ServiceInstanceState(id);
+    ASSERT_TRUE(ns_state != NULL);
+
+    EXPECT_EQ(0, ns_state->status());
+    EXPECT_EQ(NamespaceState::Starting, ns_state->status_type());
+
+    task_util::WaitForCondition(&evm_,
+            boost::bind(&NamespaceManagerTest::IsExpectedStatusType, this, ns_state, NamespaceState::Started),
+            kTimeoutSeconds);
+
+    EXPECT_EQ(NamespaceState::Started, ns_state->status_type());
+    EXPECT_EQ(0, ns_state->status());
+
+    NotifyChange(id);
+    task_util::WaitForIdle();
+
+    EXPECT_NE(NamespaceState::Starting, ns_state->status_type());
+
+    bool updated = UpdateProperties(id);
+    EXPECT_EQ(true, updated);
+
+    task_util::WaitForCondition(&evm_,
+            boost::bind(&NamespaceManagerTest::IsExpectedStatusType, this, ns_state, NamespaceState::Starting),
+            kTimeoutSeconds);
 
     MarkServiceInstanceAsDeleted(id);
     task_util::WaitForIdle();
