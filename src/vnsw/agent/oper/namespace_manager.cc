@@ -67,6 +67,9 @@ void NamespaceManager::UpdateStateStatusType(NamespaceTask* task, int status) {
         NamespaceState *state = GetState(svc_instance);
         if (state != NULL) {
             state->set_status(status);
+            LOG(DEBUG, "NetNS update status for uuid: "
+                << svc_instance->ToString()
+                << " " << status);
 
             if (status != 0) {
                 if (state->status_type() != NamespaceState::Timeout) {
@@ -336,6 +339,8 @@ void NamespaceManager::EventObserver(
     NamespaceState *state = GetState(svc_instance);
 
     bool usable = svc_instance->IsUsable();
+    LOG(DEBUG, "NetNS event notification for uuid: " << svc_instance->ToString()
+	<< (usable ? "usable" : "not usable"));
     if (!usable && state != NULL &&
         state->status_type() != NamespaceState::Stopping &&
         state->status_type() != NamespaceState::Stopped) {
@@ -431,7 +436,7 @@ void NamespaceTask::Terminate() {
 
 pid_t NamespaceTask::Run() {
     std::vector<std::string> argv;
-    LOG(DEBUG, "Start a NetNS command: " << cmd_);
+    LOG(DEBUG, "Execute NetNS command: " << cmd_);
 
     is_running_ = true;
 
