@@ -48,7 +48,7 @@ test_vmport_cfg = AgentEnv.MakeTestCmd(env, 'test_vmport_cfg', flaky_agent_suite
 test_fip_cfg = AgentEnv.MakeTestCmd(env, 'test_fip_cfg', agent_suite)
 test_stats = AgentEnv.MakeTestCmd(env, 'test_stats', flaky_agent_suite)
 test_route = AgentEnv.MakeTestCmd(env, 'test_route', flaky_agent_suite)
-test_l2route = AgentEnv.MakeTestCmd(env, 'test_l2route', flaky_agent_suite)
+test_l2route = AgentEnv.MakeTestCmd(env, 'test_l2route', agent_suite)
 test_cfg = AgentEnv.MakeTestCmd(env, 'test_cfg', agent_suite)
 test_xmpp_hv2 = AgentEnv.MakeTestCmd(env, 'test_xmpp_hv2', flaky_agent_suite)
 test_xmpp_non_hv = AgentEnv.MakeTestCmd(env, 'test_xmpp_non_hv', flaky_agent_suite)
@@ -86,7 +86,6 @@ test_agent_route_walker = AgentEnv.MakeTestCmd(env, 'test_agent_route_walker',
                                                agent_suite)
 test_xmpp_hv = AgentEnv.MakeTestCmd(env, 'test_xmpp_hv', flaky_agent_suite)
 test_scale_walk = AgentEnv.MakeTestCmd(env, 'test_scale_walk', flaky_agent_suite)
-test_sg = AgentEnv.MakeTestCmd(env, 'test_sg', flaky_agent_suite)
 test_acl = AgentEnv.MakeTestCmdSrc(env, 'test_acl',
                                    ['../filter/test/acl_test.cc'],
                                    agent_suite)

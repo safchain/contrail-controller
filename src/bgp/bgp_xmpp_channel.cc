@@ -24,6 +24,7 @@
 #include "bgp/bgp_server.h"
 #include "bgp/inet/inet_table.h"
 #include "bgp/enet/enet_table.h"
+#include "bgp/extended-community/mac_mobility.h"
 #include "bgp/ermvpn/ermvpn_table.h"
 #include "bgp/ipeer.h"
 #include "bgp/origin-vn/origin_vn.h"
@@ -1024,6 +1025,12 @@ void BgpXmppChannel::ProcessItem(string vrf_name,
             ext.communities.push_back(sg.GetExtCommunityValue());
         }
 
+        // Seq number
+        if (item.entry.sequence_number) {
+            MacMobility mm(item.entry.sequence_number);
+            ext.communities.push_back(mm.GetExtCommunityValue());
+        }
+
         if (rt_instance) {
             OriginVn origin_vn(bgp_server_->autonomous_system(),
                 rt_instance->virtual_network_index());
@@ -1517,9 +1524,11 @@ void BgpXmppChannel::FillTableMembershipInfo(BgpNeighborResp *resp) {
     resp->set_routing_tables(new_table_list);
 }
 
+//
+// Erase all defer_q_ elements with the given (vrf, table).
+//
 void BgpXmppChannel::FlushDeferQ(std::string vrf_name, std::string table_name) {
-    // Erase all elements for the table
-    for(DeferQ::iterator it =
+    for (DeferQ::iterator it =
         defer_q_.find(std::make_pair(vrf_name, table_name)), itnext;
         (it != defer_q_.end() && it->first.second == table_name);
         it = itnext) {
@@ -1530,9 +1539,12 @@ void BgpXmppChannel::FlushDeferQ(std::string vrf_name, std::string table_name) {
     }
 }
 
+//
+// Erase all defer_q_ elements for all tables for the given vrf.
+//
 void BgpXmppChannel::FlushDeferQ(std::string vrf_name) {
-    // Erase all elements for the table
-    for(DeferQ::iterator it = defer_q_.begin(), itnext;
+    for (DeferQ::iterator it =
+        defer_q_.lower_bound(std::make_pair(vrf_name, std::string())), itnext;
         (it != defer_q_.end() && it->first.first == vrf_name);
         it = itnext) {
         itnext = it;

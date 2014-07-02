@@ -33,6 +33,7 @@
 #include <oper/multicast.h>
 #include <oper/global_vrouter.h>
 #include <oper/agent_route_encap.h>
+#include <oper/path_preference.h>
 #include <base/task_trigger.h>
 
 SandeshTraceBufferPtr OperDBTraceBuf(SandeshTraceBufferCreate("Oper DB", 5000));
@@ -135,6 +136,8 @@ void OperDB::CreateDBTables(DB *db) {
 
     multicast_.reset(new MulticastHandler(agent_));
     global_vrouter_.reset(new GlobalVrouter(this));
+    route_preference_module_.reset(new PathPreferenceModule(agent_));
+    route_preference_module_->Init();
 }
 
 void OperDB::Init() {

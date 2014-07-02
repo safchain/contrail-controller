@@ -14,6 +14,7 @@
 #include "oper/interface_common.h"
 #include "oper/nexthop.h"
 #include "oper/route_common.h"
+#include "oper/path_preference.h"
 #include "oper/vrf.h"
 #include "oper/sg.h"
 #include "oper/global_vrouter.h"
@@ -353,6 +354,15 @@ static void SetInEcmpIndex(const PktInfo *pkt, PktFlowInfo *flow_info,
         //a interface NH and not composite NH, install reverse flow for consistency
         flow_info->ecmp = true;
     }
+}
+
+static bool RouteAllowNatLookup(const Inet4UnicastRouteEntry *rt) {
+    if (rt != NULL && IsLinkLocalRoute(rt)) {
+        // skip NAT lookup if found route has link local peer.
+        return false;
+    }
+
+    return true;
 }
 
 void PktFlowInfo::SetEcmpFlowInfo(const PktInfo *pkt, const PktControlInfo *in,
@@ -740,7 +750,7 @@ void PktFlowInfo::VrfTranslate(const PktInfo *pkt, PktControlInfo *in,
     }
 
     MatchAclParams match_acl_param;
-    if (!acl->PacketMatch(hdr, match_acl_param)) {
+    if (!acl->PacketMatch(hdr, match_acl_param, NULL)) {
         return;
     }
 
@@ -796,14 +806,13 @@ void PktFlowInfo::IngressProcess(const PktInfo *pkt, PktControlInfo *in,
         }
     }
 
-    // If no route for DA or route points to a different VN
-    // and floating-ip configured try floating-ip SNAT
-    if (out->rt_ == NULL ||
-        (in->vn_ != NULL && *RouteToVn(out->rt_) != in->vn_->GetName())) {
+    if (RouteAllowNatLookup(out->rt_)) {
+        // If interface has floating IP, check if we have more specific route in
+        // public VN (floating IP)
         if (IntfHasFloatingIp(in->intf_)) {
             FloatingIpSNat(pkt, in, out);
         }
-    } 
+    }
     
     if (out->rt_ != NULL) {
         // Route is present. If IP-DA is a floating-ip, we need DNAT
@@ -848,8 +857,9 @@ void PktFlowInfo::EgressProcess(const PktInfo *pkt, PktControlInfo *in,
         out->vn_ = InterfaceToVn(out->intf_);
     }
 
-    // If no route for DA and floating-ip configured try floating-ip DNAT
-    if (out->rt_ == NULL) {
+    if (RouteAllowNatLookup(out->rt_)) {
+        // If interface has floating IP, check if destination is one of the
+        // configured floating IP.
         if (IntfHasFloatingIp(out->intf_)) {
             FloatingIpDNat(pkt, in, out);
         }
@@ -939,6 +949,13 @@ void PktFlowInfo::Add(const PktInfo *pkt, PktControlInfo *in,
                 pkt->ip_proto, pkt->sport, pkt->dport);
     FlowEntryPtr flow(Agent::GetInstance()->pkt()->flow_table()->Allocate(key));
 
+    if (ingress && !short_flow && !linklocal_flow) {
+        if (in->rt_->WaitForTraffic()) {
+            flow_table->agent()->oper_db()->route_preference_module()->
+                EnqueueTrafficSeen(Ip4Address(pkt->ip_saddr), 32,
+                                   in->intf_->id(), pkt->vrf);
+        }
+    }
     // Do not allow more than max flows
     if ((in->vm_ &&
          (flow_table->VmFlowCount(in->vm_) + 2) > flow_table->max_vm_flows()) ||

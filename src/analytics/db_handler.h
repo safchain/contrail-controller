@@ -58,7 +58,9 @@ public:
     typedef std::map<std::string, std::pair<Var, AttribMap> > TagMap;
 
     DbHandler(EventManager *evm, GenDb::GenDbIf::DbErrorHandler err_handler,
-            std::string cassandra_ip, unsigned short cassandra_port, int analytics_ttl, std::string name);
+        std::vector<std::string> cassandra_ips,
+        std::vector<int> cassandra_ports, int analytics_ttl,
+        std::string name);
     DbHandler(GenDb::GenDbIf *dbif);
     virtual ~DbHandler();
 
@@ -69,7 +71,7 @@ public:
     bool AllowMessageTableInsert(const SandeshHeader &header);
     bool MessageIndexTableInsert(const std::string& cfname,
         const SandeshHeader& header, const std::string& message_type,
-        const boost::uuids::uuid& unm);
+        const boost::uuids::uuid& unm, const std::string keyword);
     virtual void MessageTableInsert(const VizMsg *vmsgp);
     void MessageTableOnlyInsert(const VizMsg *vmsgp);
 

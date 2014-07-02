@@ -610,9 +610,10 @@ private:
 };
 
 CdbIf::CdbIf(DbErrorHandler errhandler,
-        std::string cassandra_ip, unsigned short cassandra_port, int ttl,
+        std::vector<std::string> cassandra_ips,
+        std::vector<int> cassandra_ports, int ttl,
         std::string name, bool only_sync) :
-    socket_(new TSocket(cassandra_ip, cassandra_port)),
+    socket_(new TSocketPool(cassandra_ips, cassandra_ports)),
     transport_(new TFramedTransport(socket_)),
     protocol_(new TBinaryProtocol(transport_)),
     client_(new CassandraClient(protocol_)),
@@ -741,6 +742,7 @@ void CdbIf::Db_SetQueueWaterMark(bool high, size_t queue_count,
                                  DbQueueWaterMarkCb cb) {
     DbQueueWaterMarkInfo wm(high, queue_count, cb);
     cdbq_wm_info_.push_back(wm);
+    tbb::mutex::scoped_lock lock(cdbq_mutex_);
     if (cdbq_.get() == NULL) {
         return;
     }
@@ -749,6 +751,7 @@ void CdbIf::Db_SetQueueWaterMark(bool high, size_t queue_count,
 
 void CdbIf::Db_ResetQueueWaterMarks() {
     cdbq_wm_info_.clear();
+    tbb::mutex::scoped_lock lock(cdbq_mutex_);
     if (cdbq_.get() != NULL) {
         cdbq_->ResetHighWaterMark();
         cdbq_->ResetLowWaterMark();
@@ -1317,6 +1320,7 @@ void CdbIf::Db_BatchAddColumn(bool done) {
 }
 
 bool CdbIf::Db_AddColumn(std::auto_ptr<GenDb::ColList> cl) {
+    tbb::mutex::scoped_lock lock(cdbq_mutex_);
     if (!Db_IsInitDone() || !cdbq_.get()) {
         UpdateCfWriteFailStats(cl->cfname_);
         return false;

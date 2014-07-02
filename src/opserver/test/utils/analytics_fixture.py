@@ -52,6 +52,7 @@ class Collector(object):
         self.analytics_fixture = analytics_fixture
         self.listen_port = AnalyticsFixture.get_free_port()
         self.http_port = AnalyticsFixture.get_free_port()
+        self.syslog_port = AnalyticsFixture.get_free_port()
         self.hostname = socket.gethostname()
         self._instance = None
         self._redis_uve = redis_uve
@@ -65,6 +66,9 @@ class Collector(object):
         return '127.0.0.1:'+str(self.listen_port)
     # end get_addr
 
+    def get_syslog_port(self):
+        return self.syslog_port
+
     def start(self):
         assert(self._instance == None)
         self._log_file = '/tmp/vizd.messages.' + str(self.listen_port)
@@ -76,6 +80,7 @@ class Collector(object):
             str(self._redis_uve.port),
             '--COLLECTOR.port', str(self.listen_port),
             '--DEFAULT.http_server_port', str(self.http_port),
+            '--DEFAULT.syslog_port', str(self.syslog_port),
             '--DEFAULT.log_file', self._log_file]
         if self._is_dup is True:
             args.append('--DEFAULT.dup')
@@ -133,7 +138,7 @@ class OpServer(object):
                 '/analytics_test/bin/contrail-analytics-api',
                 '--redis_server_port', str(self._redis_port),
                 '--redis_query_port', 
-                str(self.analytics_fixture.redis_query.port),
+                str(self.analytics_fixture.redis_uves[0].port),
                 '--http_server_port', str(self.http_port),
                 '--log_file', self._log_file,
                 '--rest_api_port', str(self.listen_port)]
@@ -202,7 +207,7 @@ class QueryEngine(object):
         self._log_file = '/tmp/qed.messages.' + str(self.listen_port)
         subprocess.call(['rm', '-rf', self._log_file])
         args = [self.analytics_fixture.builddir + '/query_engine/qedt',
-                '--REDIS.port', str(self.analytics_fixture.redis_query.port),
+                '--REDIS.port', str(self.analytics_fixture.redis_uves[0].port),
                 '--DEFAULT.cassandra_server_list', '127.0.0.1:' +
                 str(self.analytics_fixture.cassandra_port),
                 '--DEFAULT.http_server_port', str(self.listen_port),
@@ -275,8 +280,6 @@ class AnalyticsFixture(fixtures.Fixture):
 
         self.redis_uves = [Redis(self.builddir)]
         self.redis_uves[0].start()
-        self.redis_query = Redis(self.builddir)
-        self.redis_query.start()
 
         self.collectors = [Collector(self, self.redis_uves[0], self.logger)] 
         self.collectors[0].start()
@@ -1560,6 +1563,24 @@ class AnalyticsFixture(fixtures.Fixture):
         return True
     # end verify_object_table_query
 
+    @retry(delay=1, tries=5)
+    def verify_keyword_query(self, line, keywords=[]):
+        self.logger.info('Verify where query with keywords');
+        vns = VerificationOpsSrv('127.0.0.1', self.opserver_port);
+
+        query = Query(table="MessageTable",
+                            start_time="now-1h",
+                            end_time="now",
+                            select_fields=["Xmlmessage","Level"],
+                            where=map(lambda x:[{"name": "Keyword", "value": x,
+                                "op": 1}], keywords))
+        json_qstr = json.dumps(query.__dict__)
+        res = vns.post_query_json(json_qstr)
+        assert(len(res)>0)
+        self.logger.info(str(res))
+        return len(res)>0
+    # end verify_keyword_query
+
     def cleanUp(self):
 
         try:
@@ -1577,7 +1598,6 @@ class AnalyticsFixture(fixtures.Fixture):
                 pass
         for redis_uve in self.redis_uves:
             redis_uve.stop()
-        self.redis_query.stop()
         super(AnalyticsFixture, self).cleanUp()
 
     @staticmethod

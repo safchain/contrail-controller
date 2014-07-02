@@ -47,7 +47,7 @@ import discoveryclient.client as client
 from collections import OrderedDict
 import jsonpickle
 
-_BGP_RTGT_MAX_ID = 1 << 20
+_BGP_RTGT_MAX_ID = 1 << 24
 _BGP_RTGT_ALLOC_PATH = "/id/bgp/route-targets/"
 
 _VN_MAX_ID = 1 << 24
@@ -305,6 +305,9 @@ class VirtualNetworkST(DictST):
         for router in BgpRouterST.values():
             router.update_autonomous_system(new_asn)
         # end for router
+        for router in LogicalRouterST.values():
+            router.update_autonomous_system(new_asn)
+        # end for router
         cls._autonomous_system = int(new_asn)
     # end update_autonomous_system
 
@@ -503,6 +506,8 @@ class VirtualNetworkST(DictST):
         rinst_fq_name_str = '%s:%s' % (self.obj.get_fq_name_str(), rinst_name)
         try:
             rtgt_num = int(self._rt_cf.get(rinst_fq_name_str)['rtgt_num'])
+            if rtgt_num < common.BGP_RTGT_MIN_ID:
+                raise pycassa.NotFoundException
             rtgt_ri_fq_name_str = self._rt_allocator.read(rtgt_num)
             if (rtgt_ri_fq_name_str != rinst_fq_name_str):
                 alloc_new = True
@@ -2403,6 +2408,12 @@ class LogicalRouterST(DictST):
         self.virtual_networks = set()
         obj = _vnc_lib.logical_router_read(fq_name_str=name)
         rt_ref = obj.get_route_target_refs()
+        if rt_ref:
+            rt_key = rt_ref[0]['to'][0]
+            rtgt_num = int(rt_key.split(':')[-1])
+            if rtgt_num < common.BGP_RTGT_MIN_ID:
+                _vnc_lib.route_target_delete(fq_name=[rt_key])
+            rt_ref = None
         if not rt_ref:
             rtgt_num = VirtualNetworkST._rt_allocator.alloc(name)
             rt_key = "target:%s:%d" % (
@@ -2410,8 +2421,6 @@ class LogicalRouterST(DictST):
             rtgt_obj = RouteTargetST.locate(rt_key)
             obj.set_route_target(rtgt_obj)
             _vnc_lib.logical_router_update(obj)
-        else:
-            rt_key = rt_ref[0]['to'][0]
 
         self.route_target = rt_key
     # end __init__
@@ -2461,6 +2470,29 @@ class LogicalRouterST(DictST):
                 ri_obj.update_route_target_list(rt_add=[self.route_target])
         self.virtual_networks = vn_set
     # end set_virtual_networks
+
+    def update_autonomous_system(self, asn):
+        old_rt = self.route_target
+        rtgt_num = int(old_rt.split(':')[-1])
+        rt_key = "target:%s:%d" % (asn, rtgt_num)
+        rtgt_obj = RouteTargetST.locate(rt_key)
+        try:
+            obj = _vnc_lib.logical_router_read(fq_name_str=self.name)
+            obj.set_route_target(rtgt_obj)
+            _vnc_lib.logical_router_update(obj)
+        except NoIdError:
+            _sandesh._logger.debug(
+                "NoIdError while accessing logical router %s" % self.name)
+        for vn in self.virtual_networks:
+            vn_obj = VirtualNetworkST.get(vn)
+            if vn_obj is not None:
+                ri_obj = vn_obj.get_primary_routing_instance()
+                ri_obj.update_route_target_list(rt_del=[old_rt],
+                                                rt_add=[rt_key])
+        _vnc_lib.route_target_delete(fq_name=[old_rt])
+        self.route_target = rt_key
+    # end update_autonomous_system
+
 # end LogicaliRouterST
 
 
@@ -2500,7 +2532,8 @@ class SchemaTransformer(object):
             SecurityGroupST._sg_id_allocator.delete(0)
         SecurityGroupST._sg_id_allocator.reserve(0, '__reserved__')
         VirtualNetworkST._rt_allocator = IndexAllocator(
-            _zookeeper_client, _BGP_RTGT_ALLOC_PATH, _BGP_RTGT_MAX_ID)
+            _zookeeper_client, _BGP_RTGT_ALLOC_PATH, _BGP_RTGT_MAX_ID,
+            common.BGP_RTGT_MIN_ID)
 
         # Initialize discovery client
         self._disc = None

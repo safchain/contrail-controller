@@ -18,6 +18,7 @@ import bottle
 from neutron.common import constants
 from neutron.common import exceptions
 from neutron.api.v2 import attributes as attr
+from neutron.extensions import allowedaddresspairs as addr_pair
 
 from cfgm_common import exceptions as vnc_exc
 from vnc_api.vnc_api import *
@@ -282,6 +283,16 @@ class DBInterface(object):
     def _obj_to_dict(self, obj):
         return self._vnc_lib.obj_to_dict(obj)
     #end _obj_to_dict
+
+    def _get_plugin_property(self, property_in):
+        fq_name=['default-global-system-config'];
+        gsc_obj = self._vnc_lib.global_system_config_read(fq_name);
+        plugin_settings = gsc_obj.plugin_tuning.plugin_property
+        for each_setting in plugin_settings:
+            if each_setting.property == property_in:
+                return each_setting.value
+        return None
+    #end _get_plugin_property
 
     def _ensure_instance_exists(self, instance_id):
         instance_name = instance_id
@@ -1570,21 +1581,21 @@ class DBInterface(object):
         cidr = subnet_q['cidr'].split('/')
         pfx = cidr[0]
         pfx_len = int(cidr[1])
-        if subnet_q['gateway_ip'] != attr.ATTR_NOT_SPECIFIED:
+        if 'gateway_ip' in subnet_q:
             default_gw = subnet_q['gateway_ip']
         else:
             # Assigned first+1 from cidr
             network = IPNetwork('%s/%s' % (pfx, pfx_len))
             default_gw = str(IPAddress(network.first + 1))
 
-        if subnet_q['allocation_pools'] != attr.ATTR_NOT_SPECIFIED:
+        if 'allocation_pools' in subnet_q:
             alloc_pools = subnet_q['allocation_pools']
         else:
             # Assigned by address manager
             alloc_pools = None
 
         dhcp_option_list = None
-        if subnet_q['dns_nameservers']:
+        if 'dns_nameservers' in subnet_q:
             dhcp_options=[]
             for dns_server in subnet_q['dns_nameservers']:
                 dhcp_options.append(DhcpOptionType(dhcp_option_name='6',
@@ -1593,7 +1604,7 @@ class DBInterface(object):
                 dhcp_option_list = DhcpOptionsListType(dhcp_options)
 
         host_route_list = None
-        if subnet_q['host_routes']:
+        if 'host_routes' in subnet_q:
             host_routes=[]
             for host_route in subnet_q['host_routes']:
                 host_routes.append(RouteType(prefix=host_route['destination'],
@@ -1601,7 +1612,10 @@ class DBInterface(object):
             if host_routes:
                 host_route_list = RouteTableType(host_routes)
 
-        dhcp_config = subnet_q['enable_dhcp']
+        if 'enable_dhcp' in subnet_q:
+            dhcp_config = subnet_q['enable_dhcp']
+        else:
+            dhcp_config = None
         sn_name=subnet_q.get('name')
         subnet_vnc = IpamSubnetType(subnet=SubnetType(pfx, pfx_len),
                                     default_gateway=default_gw,
@@ -1941,10 +1955,9 @@ class DBInterface(object):
                 instance_obj = self._ensure_instance_exists(instance_name)
                 port_obj.set_virtual_machine(instance_obj)
 
-        if ('security_groups' in port_q and
-            port_q['security_groups']):
+        if 'security_groups' in port_q:
             port_obj.set_security_group_list([])
-            for sg_id in port_q['security_groups']:
+            for sg_id in port_q.get('security_groups') or []:
                 # TODO optimize to not read sg (only uuid/fqn needed)
                 sg_obj = self._vnc_lib.security_group_read(id=sg_id)
                 port_obj.add_security_group(sg_obj)
@@ -1954,6 +1967,31 @@ class DBInterface(object):
             id_perms.enable = port_q['admin_state_up']
             port_obj.set_id_perms(id_perms)
 
+
+        if (addr_pair.ADDRESS_PAIRS in port_q and 
+           port_q[addr_pair.ADDRESS_PAIRS]):
+            aaps = AllowedAddressPairs()
+            aap_array = []
+            for address_pair in port_q[addr_pair.ADDRESS_PAIRS]:
+                mode = u'active-active';
+                if 'mac_address' not in address_pair:
+                    mode = u'active-standby';
+                    mac_refs = port_obj.get_virtual_machine_interface_mac_addresses()
+                    if mac_refs:
+                        address_pair['mac_address'] = mac_refs.mac_address[0]
+                
+                cidr = address_pair['ip_address'].split('/')
+                if len(cidr) == 1:
+                    subnet=SubnetType(cidr[0], 32);
+                elif len(cidr) == 2:
+                    subnet=SubnetType(cidr[0], int(cidr[1]));
+                else:
+                    raise exceptions.BadRequest(resource='port', msg="Invalid address pair argument")
+                aap = AllowedAddressPair(subnet, address_pair['mac_address'], mode)
+                aap_array.append(aap)
+            aaps.set_allowed_address_pair(aap_array)
+            port_obj.set_virtual_machine_interface_allowed_address_pairs(aaps)
+             
         return port_obj
     #end _port_neutron_to_vnc
 
@@ -2002,6 +2040,16 @@ class DBInterface(object):
         mac_refs = port_obj.get_virtual_machine_interface_mac_addresses()
         if mac_refs:
             port_q_dict['mac_address'] = mac_refs.mac_address[0]
+
+        allowed_address_pairs = port_obj.get_virtual_machine_interface_allowed_address_pairs()
+        if allowed_address_pairs and allowed_address_pairs.allowed_address_pair:
+            address_pairs = []
+            for aap in allowed_address_pairs.allowed_address_pair:
+                pair = {"ip_address": '%s/%s' % (aap.ip.get_ip_prefix(), 
+                                                 aap.ip.get_ip_prefix_len()),
+                        "mac_address": aap.mac}
+                address_pairs.append(pair)
+            port_q_dict['allowed_address_pairs'] = address_pairs
 
         port_q_dict['fixed_ips'] = []
         ip_back_refs = port_obj.get_instance_ip_back_refs()
@@ -2054,6 +2102,7 @@ class DBInterface(object):
         else:
             port_q_dict['device_id'] = ''
             port_q_dict['device_owner'] = 'TODO-device-owner'
+
 
         return port_q_dict
     #end _port_vnc_to_neutron
@@ -2970,13 +3019,14 @@ class DBInterface(object):
 
         # if ip address passed then use it
         req_ip_addrs = []
-        for fixed_ip in port_q['fixed_ips'] or []:
-            if 'ip_address' in fixed_ip:
-                ip_addr = fixed_ip['ip_address']
-                if self._ip_addr_in_net_id(ip_addr, net_id):
-                    self._raise_contrail_exception(409, exceptions.IpAddressInUse(net_id=net_id,
-                                                    ip_address=ip_addr))
-                req_ip_addrs.append(ip_addr)
+        if 'fixed_ips' in port_q:
+            for fixed_ip in port_q['fixed_ips'] or []:
+                if 'ip_address' in fixed_ip:
+                    ip_addr = fixed_ip['ip_address']
+                    if self._ip_addr_in_net_id(ip_addr, net_id):
+                        self._raise_contrail_exception(409, exceptions.IpAddressInUse(net_id=net_id,
+                                                        ip_address=ip_addr))
+                    req_ip_addrs.append(ip_addr)
 
         # create the object
         port_id = self._virtual_machine_interface_create(port_obj)
