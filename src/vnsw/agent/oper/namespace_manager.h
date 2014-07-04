@@ -34,6 +34,8 @@ class NamespaceManager {
                     const int netns_timeout);
     void Terminate();
 
+    NamespaceState *GetState(ServiceInstance *);
+
  private:
     friend class NamespaceManagerTest;
 
@@ -55,7 +57,6 @@ class NamespaceManager {
     void ScheduleNextTask(NamespaceTaskQueue *task_queue);
     bool StartTask(NamespaceTaskQueue *task_queue, NamespaceTask *task);
 
-    NamespaceState *GetState(ServiceInstance *);
     NamespaceState *GetState(NamespaceTask* task);
     void SetState(ServiceInstance *svc_instance, NamespaceState *state);
     void ClearState(ServiceInstance *svc_instance);

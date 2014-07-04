@@ -11,6 +11,7 @@
 
 class DBGraph;
 class IFMapDependencyManager;
+class NamespaceManager;
 
 class ServiceInstanceKey : public AgentKey {
   public:
@@ -73,7 +74,7 @@ public:
     virtual std::string ToString() const;
     virtual void SetKey(const DBRequestKey *key);
     virtual KeyPtr GetDBRequestKey() const;
-    virtual bool DBEntrySandesh(Sandesh *sresp, std::string &name) const;
+    bool DBEntrySandesh(Sandesh *sresp, std::string &name) const;
 
     virtual uint32_t GetRefCount() const {
         return AgentRefCount<ServiceInstance>::GetRefCount();
