@@ -35,7 +35,7 @@ void NamespaceManager::Initialize(DB *database, AgentSignal *signal,
 
     netns_cmd_ = netns_cmd;
     if (netns_cmd_.length() == 0) {
-        LOG(ERROR, "Path for network namespace command not specified"
+        LOG(ERROR, "NetNS path for network namespace command not specified "
                    "in the config file, the namespaces won't be started");
     }
 
@@ -71,7 +71,7 @@ void NamespaceManager::UpdateStateStatusType(NamespaceTask* task, int status) {
                 << svc_instance->ToString()
                 << " " << status);
 
-            if (status != 0) {
+            if (WIFEXITED(status)) {
                 if (state->status_type() != NamespaceState::Timeout) {
                     state->set_status_type(NamespaceState::Error);
                 }
@@ -97,6 +97,7 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code &error,
             NamespaceTaskQueue *task_queue = *iter;
             if (!task_queue->Empty()) {
                 NamespaceTask *task = task_queue->Front();
+                std::cout << "PID: " << pid << "/" << task->pid() << std::endl;
                 if (task->pid() == pid) {
                     UpdateStateStatusType(task, status);
 
@@ -175,13 +176,13 @@ NamespaceTaskQueue *NamespaceManager::GetTaskQueue(
 
 bool NamespaceManager::StartTask(NamespaceTaskQueue *task_queue,
                                  NamespaceTask *task) {
-    NamespaceState *state = GetState(task);
-    assert(state);
-    state->set_cmd(task->cmd());
-    state->set_status_type(NamespaceState::Starting);
-
     pid_t pid = task->Run();
-    state->set_pid(pid);
+    NamespaceState *state = GetState(task);
+    if (state != NULL) {
+        state->set_pid(pid);
+        state->set_cmd(task->cmd());
+        state->set_status_type(NamespaceState::Starting);
+    }
 
     if (pid > 0) {
         task_queue->StartTimer(netns_timeout_ * 1000);
@@ -208,13 +209,12 @@ void NamespaceManager::ScheduleNextTask(NamespaceTaskQueue *task_queue) {
                return;
             }
             NamespaceState *state = GetState(task);
-            assert(state);
-            state->set_status_type(NamespaceState::Timeout);
+            if (state) {
+                state->set_status_type(NamespaceState::Timeout);
+            }
 
-            std::stringstream ss;
-            ss << "Timeout " << delay << " > " << netns_timeout_ << ", ";
-            ss << task->cmd();
-            LOG(ERROR, ss.str());
+            LOG(ERROR, "NetNS error timeout " << delay << " > " <<
+                netns_timeout_ << ", " << task->cmd());
 
             if (delay > (netns_timeout_ * 2)) {
                task->Terminate();
@@ -340,7 +340,7 @@ void NamespaceManager::EventObserver(
 
     bool usable = svc_instance->IsUsable();
     LOG(DEBUG, "NetNS event notification for uuid: " << svc_instance->ToString()
-	<< (usable ? "usable" : "not usable"));
+        << (usable ? " usable" : " not usable"));
     if (!usable && state != NULL &&
         state->status_type() != NamespaceState::Stopping &&
         state->status_type() != NamespaceState::Stopped) {
@@ -404,7 +404,7 @@ void NamespaceTask::ReadErrors(const boost::system::error_code &ec,
 
         std::string errors = errors_data_.str();
         if (errors.length() > 0) {
-            LOG(ERROR, errors);
+            LOG(ERROR, "NetNS run errors: " << std::endl << errors);
 
             if (!on_error_cb_.empty()) {
                 on_error_cb_(this, errors);
@@ -436,7 +436,7 @@ void NamespaceTask::Terminate() {
 
 pid_t NamespaceTask::Run() {
     std::vector<std::string> argv;
-    LOG(DEBUG, "Execute NetNS command: " << cmd_);
+    LOG(DEBUG, "NetNS run command: " << cmd_);
 
     is_running_ = true;
 
@@ -449,6 +449,18 @@ pid_t NamespaceTask::Run() {
     int err[2];
     if (pipe(err) < 0) {
         return -1;
+    }
+
+    /*
+     * temporarily block SIGCHLD signals
+     */
+    sigset_t mask;
+    sigset_t orig_mask;
+    sigemptyset (&mask);
+    sigaddset (&mask, SIGCHLD);
+
+    if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
+        LOG(ERROR, "NetNS error: sigprocmask, " << strerror(errno));
     }
 
     pid_ = vfork();
@@ -464,6 +476,11 @@ pid_t NamespaceTask::Run() {
         perror("execvp");
 
         _exit(127);
+    }
+
+    std::cout << "POD: " << this->pid() << std::endl;
+    if (sigprocmask(SIG_SETMASK, &orig_mask, NULL) < 0) {
+        LOG(ERROR, "NetNS error: sigprocmask, " << strerror(errno));
     }
     close(err[1]);
 
@@ -522,9 +539,7 @@ bool NamespaceTaskQueue::OnTimerTimeout() {
 }
 
 void NamespaceTaskQueue::TimerErrorHandler(std::string name, std::string error) {
-    std::stringstream ss;
-    ss << "Error during a Namespace task timeout, " << error;
-    LOG(ERROR, ss.str());
+    LOG(ERROR, "NetNS timeout error: " << error);
 }
 
 void NamespaceTaskQueue::Clear() {

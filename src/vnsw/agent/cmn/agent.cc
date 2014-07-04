@@ -247,6 +247,7 @@ void Agent::set_cn_mcast_builder(AgentXmppChannel *peer) {
 void Agent::InitCollector() {
     /* Return if collector is not configured in config file */
     if (params_->collector_server_list().size() == 0) {
+        std::cout << "COUCOU" << std::endl;
         return;
     }
 

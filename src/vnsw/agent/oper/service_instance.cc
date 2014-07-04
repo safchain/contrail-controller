@@ -12,6 +12,9 @@
 #include <cfg/cfg_init.h>
 #include <cmn/agent.h>
 #include <cmn/agent_param.h>
+#include <oper/agent_sandesh.h>
+#include <oper/agent_types.h>
+#include <oper/namespace_manager.h>
 
 using boost::uuids::uuid;
 
@@ -52,6 +55,8 @@ public:
     static const std::string &IntServiceTypeToStr(
         const ServiceInstance::ServiceType &type);
     static int StrVirtualizationTypeToInt(const std::string &type);
+    static const std::string &IntVirtualizationTypeToStr(
+        const ServiceInstance::VirtualizationType &type);
 
 private:
     typedef std::map<std::string, int> StrTypeToIntMap;
@@ -347,9 +352,7 @@ bool ServiceInstance::IsLess(const DBEntry &rhs) const {
 }
 
 std::string ServiceInstance::ToString() const {
-    std::stringstream uuid_str;
-    uuid_str << uuid_;
-    return uuid_str.str();
+    return UuidToString(uuid_);
 }
 
 void ServiceInstance::SetKey(const DBRequestKey *key) {
@@ -364,7 +367,54 @@ DBEntryBase::KeyPtr ServiceInstance::GetDBRequestKey() const {
 }
 
 bool ServiceInstance::DBEntrySandesh(Sandesh *sresp, std::string &name) const {
-    return false;
+    ServiceInstanceResp *resp = static_cast<ServiceInstanceResp *> (sresp);
+
+    std::string str_uuid = UuidToString(uuid_);
+    if (! name.empty() && str_uuid != name) {
+        return false;
+    }
+
+    ServiceInstanceSandeshData data;
+
+    data.set_uuid(str_uuid);
+    data.set_instance_id(UuidToString(properties_.instance_id));
+
+    data.set_service_type(ServiceInstanceTypesMapping::IntServiceTypeToStr(
+                    static_cast<ServiceType>(properties_.service_type)));
+    data.set_virtualization_type(
+                    ServiceInstanceTypesMapping::IntVirtualizationTypeToStr(
+                    static_cast<VirtualizationType>(
+                                    properties_.virtualization_type)));
+
+    data.set_vmi_inside(UuidToString(properties_.vmi_inside));
+    data.set_vmi_outside(UuidToString(properties_.vmi_inside));
+
+    Agent *agent = Agent::GetInstance();
+    DBTableBase *si_table = agent->db()->FindTable("db.service-instance.0");
+    assert(si_table);
+
+    NamespaceManager *manager = agent->oper_db()->namespace_manager();
+    assert(manager);
+
+    NamespaceState *state = manager->GetState(const_cast<ServiceInstance *>(this));
+    if (state != NULL) {
+        NamespaceStateSandeshData state_data;
+
+        state_data.set_cmd(state->cmd());
+        state_data.set_errors(state->errors());
+        state_data.set_pid(state->pid());
+        state_data.set_status(state->status());
+        state_data.set_status_type(state->status_type());
+
+        data.set_ns_state(state_data);
+    }
+
+    std::vector<ServiceInstanceSandeshData> &list =
+            const_cast<std::vector<ServiceInstanceSandeshData>&>
+            (resp->get_service_instance_list());
+    list.push_back(data);
+
+    return true;
 }
 
 bool ServiceInstance::IsUsable() const {
@@ -403,6 +453,11 @@ void ServiceInstance::CalculateProperties(
     autogen::ServiceInstance *svc_instance =
                  static_cast<autogen::ServiceInstance *>(node_->GetObject());
     FindAndSetInterfaces(graph, vm_node, svc_instance, properties);
+}
+
+void ServiceInstanceReq::HandleRequest() const {
+    AgentServiceInstanceSandesh *sand = new AgentServiceInstanceSandesh(context(), get_uuid());
+    sand->DoSandesh();
 }
 
 /*
@@ -544,6 +599,17 @@ const std::string &ServiceInstanceTypesMapping::IntServiceTypeToStr(
     const ServiceInstance::ServiceType &type) {
     for (StrTypeToIntMap::const_iterator it = service_type_map_.begin();
          it != service_type_map_.end(); ++it) {
+        if (it->second == type) {
+            return it->first;
+        }
+    }
+    return kOtherType;
+}
+
+const std::string &ServiceInstanceTypesMapping::IntVirtualizationTypeToStr(
+    const ServiceInstance::VirtualizationType &type) {
+    for (StrTypeToIntMap::const_iterator it = virtualization_type_map_.begin();
+         it != virtualization_type_map_.end(); ++it) {
         if (it->second == type) {
             return it->first;
         }
