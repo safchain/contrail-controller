@@ -348,25 +348,23 @@ void NamespaceManager::EventObserver(
     ServiceInstance *svc_instance = static_cast<ServiceInstance *>(entry);
 
     NamespaceState *state = GetState(svc_instance);
+    if (state == NULL) {
+        state = new NamespaceState();
+        SetState(svc_instance, state);
+    }
 
     bool usable = svc_instance->IsUsable();
     LOG(DEBUG, "NetNS event notification for uuid: " << svc_instance->ToString()
         << (usable ? " usable" : " not usable"));
-    if (!usable && state != NULL && last_cmd_type_ != Stop) {
+    if (!usable && last_cmd_type_ == Start) {
         StopNetNS(svc_instance, state);
         last_cmd_type_ = Stop;
     } else if (usable) {
-        if (last_cmd_type_ != Start) {
-            state = new NamespaceState();
-            SetState(svc_instance, state);
-
-            bool update = false;
-            if (state->properties().CompareTo(
-                            svc_instance->properties()) != 0) {
-                update = true;
-            }
-
-            StartNetNS(svc_instance, state, update);
+        if (last_cmd_type_ == Start && state->properties().CompareTo(
+                        svc_instance->properties()) != 0) {
+            StartNetNS(svc_instance, state, true);
+        } else if (last_cmd_type_ != Start) {
+            StartNetNS(svc_instance, state, false);
             last_cmd_type_ = Start;
         }
     }
