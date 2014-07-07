@@ -101,6 +101,8 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code &error,
                 if (task->pid() == pid) {
                     UpdateStateStatusType(task, status);
 
+                    LOG(DEBUG, "NetNS run command finished: " << task->cmd());
+
                     task_queue->Pop();
                     delete task;
 
@@ -319,7 +321,7 @@ void NamespaceManager::StopNetNS(ServiceInstance *svc_instance,
         return;
     }
 
-    cmd_str << " source-nat "; //props.ServiceTypeString();
+    cmd_str << props.ServiceTypeString();
     cmd_str << " " << UuidToString(props.instance_id);
     cmd_str << " " << UuidToString(props.vmi_inside);
     cmd_str << " " << UuidToString(props.vmi_outside);
@@ -346,7 +348,7 @@ void NamespaceManager::EventObserver(
         state->status_type() != NamespaceState::Stopped) {
         StopNetNS(svc_instance, state);
     } else if (usable) {
-        if (state == NULL) {
+        if (state == NULL || state->status_type() == NamespaceState::Stopped) {
             state = new NamespaceState();
             SetState(svc_instance, state);
 
