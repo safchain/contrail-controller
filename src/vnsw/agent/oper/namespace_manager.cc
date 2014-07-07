@@ -290,6 +290,8 @@ void NamespaceManager::StartNetNS(ServiceInstance *svc_instance,
     RegisterSvcInstance(task, svc_instance);
     boost::uuids::uuid uuid = svc_instance->properties().instance_id;
     Enqueue(task, uuid);
+
+    LOG(DEBUG, "NetNS run command queued: " << task->cmd());
 }
 
 void NamespaceManager::OnError(NamespaceTask *task,
@@ -321,7 +323,7 @@ void NamespaceManager::StopNetNS(ServiceInstance *svc_instance,
         return;
     }
 
-    cmd_str << props.ServiceTypeString();
+    cmd_str << " " << props.ServiceTypeString();
     cmd_str << " " << UuidToString(props.instance_id);
     cmd_str << " " << UuidToString(props.vmi_inside);
     cmd_str << " " << UuidToString(props.vmi_outside);
@@ -332,6 +334,8 @@ void NamespaceManager::StopNetNS(ServiceInstance *svc_instance,
     NamespaceTask *task = new NamespaceTask(cmd_str.str(), evm_);
     boost::uuids::uuid uuid = svc_instance->properties().instance_id;
     Enqueue(task, uuid);
+
+    LOG(DEBUG, "NetNS run command queued: " << task->cmd());
 }
 
 void NamespaceManager::EventObserver(
