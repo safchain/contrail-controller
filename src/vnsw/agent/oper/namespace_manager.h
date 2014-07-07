@@ -24,6 +24,11 @@ class NamespaceTaskQueue;
  */
 class NamespaceManager {
  public:
+    enum CmdType {
+        Start = 1,
+        Stop
+    };
+
     static const int kTimeoutDefault = 30;
     static const int kWorkersDefault = 1;
 
@@ -72,6 +77,7 @@ class NamespaceManager {
     DBTableBase::ListenerId listener_id_;
     std::string netns_cmd_;
     int netns_timeout_;
+    int last_cmd_type_;
 
     std::vector<NamespaceTaskQueue *> task_queues_;
     std::map<NamespaceTask *, ServiceInstance *> task_svc_instances_;

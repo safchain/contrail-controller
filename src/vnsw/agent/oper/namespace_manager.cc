@@ -352,16 +352,17 @@ void NamespaceManager::EventObserver(
     bool usable = svc_instance->IsUsable();
     LOG(DEBUG, "NetNS event notification for uuid: " << svc_instance->ToString()
         << (usable ? " usable" : " not usable"));
-    if (!usable && state != NULL &&
-        state->status_type() != NamespaceState::Stopping &&
-        state->status_type() != NamespaceState::Stopped) {
+    if (!usable && state != NULL && last_cmd_type_ != Stop) {
         StopNetNS(svc_instance, state);
+        last_cmd_type_ = Stop;
     } else if (usable) {
-        if (state == NULL || state->status_type() == NamespaceState::Stopped) {
+        if ((state == NULL || state->status_type() == NamespaceState::Stopped) &&
+            last_cmd_type_ != Start) {
             state = new NamespaceState();
             SetState(svc_instance, state);
 
             StartNetNS(svc_instance, state, false);
+            last_cmd_type_ = Start;
         } else if (state->status_type() == NamespaceState::Error ||
                    state->properties().CompareTo(
                                    svc_instance->properties()) != 0) {
@@ -370,6 +371,7 @@ void NamespaceManager::EventObserver(
              * so try to restart it
              */
             StartNetNS(svc_instance, state, true);
+            last_cmd_type_ = Start;
         }
     }
     if (svc_instance->IsDeleted()) {
