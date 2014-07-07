@@ -356,21 +356,17 @@ void NamespaceManager::EventObserver(
         StopNetNS(svc_instance, state);
         last_cmd_type_ = Stop;
     } else if (usable) {
-        if ((state == NULL || state->status_type() == NamespaceState::Stopped) &&
-            last_cmd_type_ != Start) {
+        if (last_cmd_type_ != Start) {
             state = new NamespaceState();
             SetState(svc_instance, state);
 
-            StartNetNS(svc_instance, state, false);
-            last_cmd_type_ = Start;
-        } else if (state->status_type() == NamespaceState::Error ||
-                   state->properties().CompareTo(
-                                   svc_instance->properties()) != 0) {
-            /*
-             * a previous instance has been started but is in a fail state,
-             * so try to restart it
-             */
-            StartNetNS(svc_instance, state, true);
+            bool update = false;
+            if (state->properties().CompareTo(
+                            svc_instance->properties()) != 0) {
+                update = true;
+            }
+
+            StartNetNS(svc_instance, state, update);
             last_cmd_type_ = Start;
         }
     }
