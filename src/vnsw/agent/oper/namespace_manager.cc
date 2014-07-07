@@ -104,9 +104,11 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code &error,
                     task_queue->Pop();
                     delete task;
 
-                    NamespaceTask *task = task_queue->Front();
-                    if (task) {
-                        LOG(DEBUG, "NetNS next command: " << task->cmd());
+                    if (!task_queue->Empty()) {
+                        NamespaceTask *task = task_queue->Front();
+                        if (task) {
+                            LOG(DEBUG, "NetNS next command: " << task->cmd());
+                        }
                     }
 
                     task_queue->StopTimer();
