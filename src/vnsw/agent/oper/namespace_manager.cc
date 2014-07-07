@@ -101,10 +101,13 @@ void NamespaceManager::HandleSigChild(const boost::system::error_code &error,
                 if (task->pid() == pid) {
                     UpdateStateStatusType(task, status);
 
-                    LOG(DEBUG, "NetNS run command finished: " << task->cmd());
-
                     task_queue->Pop();
                     delete task;
+
+                    NamespaceTask *task = task_queue->Front();
+                    if (task) {
+                        LOG(DEBUG, "NetNS next command: " << task->cmd());
+                    }
 
                     task_queue->StopTimer();
 
