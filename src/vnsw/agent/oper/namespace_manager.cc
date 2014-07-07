@@ -35,7 +35,7 @@ void NamespaceManager::Initialize(DB *database, AgentSignal *signal,
 
     netns_cmd_ = netns_cmd;
     if (netns_cmd_.length() == 0) {
-        LOG(ERROR, "Path for network namespace command not specified"
+        LOG(ERROR, "NetNS Path for network namespace command not specified "
                    "in the config file, the namespaces won't be started");
     }
 
@@ -211,10 +211,8 @@ void NamespaceManager::ScheduleNextTask(NamespaceTaskQueue *task_queue) {
             assert(state);
             state->set_status_type(NamespaceState::Timeout);
 
-            std::stringstream ss;
-            ss << "Timeout " << delay << " > " << netns_timeout_ << ", ";
-            ss << task->cmd();
-            LOG(ERROR, ss.str());
+            LOG(ERROR, "Timeout " << delay << " > " << netns_timeout_ << ", " <<
+                task->cmd());
 
             if (delay > (netns_timeout_ * 2)) {
                task->Terminate();
@@ -340,7 +338,7 @@ void NamespaceManager::EventObserver(
 
     bool usable = svc_instance->IsUsable();
     LOG(DEBUG, "NetNS event notification for uuid: " << svc_instance->ToString()
-	<< (usable ? "usable" : "not usable"));
+        << (usable ? " usable" : " not usable"));
     if (!usable && state != NULL &&
         state->status_type() != NamespaceState::Stopping &&
         state->status_type() != NamespaceState::Stopped) {
@@ -404,7 +402,7 @@ void NamespaceTask::ReadErrors(const boost::system::error_code &ec,
 
         std::string errors = errors_data_.str();
         if (errors.length() > 0) {
-            LOG(ERROR, errors);
+            LOG(ERROR, "NetNS Run errors: " << std::endl << errors);
 
             if (!on_error_cb_.empty()) {
                 on_error_cb_(this, errors);
@@ -436,7 +434,7 @@ void NamespaceTask::Terminate() {
 
 pid_t NamespaceTask::Run() {
     std::vector<std::string> argv;
-    LOG(DEBUG, "Execute NetNS command: " << cmd_);
+    LOG(DEBUG, "NetNS Run Command: " << cmd_);
 
     is_running_ = true;
 
@@ -522,9 +520,7 @@ bool NamespaceTaskQueue::OnTimerTimeout() {
 }
 
 void NamespaceTaskQueue::TimerErrorHandler(std::string name, std::string error) {
-    std::stringstream ss;
-    ss << "Error during a Namespace task timeout, " << error;
-    LOG(ERROR, ss.str());
+    LOG(ERROR, "NetNS Timeout Error: " << error);
 }
 
 void NamespaceTaskQueue::Clear() {
