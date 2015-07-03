@@ -1103,7 +1103,7 @@ class VncApiServer(VncApiServerGen):
         obj_dicts = []
         if not is_detail:
             if not self.is_admin_request():
-                obj_ids_list = [{'uuid': obj_uuid} 
+                obj_ids_list = [{'uuid': obj_uuid}
                                 for _, obj_uuid in fq_names_uuids]
                 obj_fields = [u'id_perms']
                 (ok, result) = self._db_conn.dbe_read_multi(
@@ -1240,7 +1240,7 @@ class VncApiServer(VncApiServerGen):
         return (True, '')
     # end _http_get_common
 
-    def _http_put_common(self, request, obj_type, obj_uuid, obj_fq_name,
+    def _http_put_common(self, context, obj_type, obj_uuid, obj_fq_name,
                          obj_dict):
         # If not connected to zookeeper do not allow operations that
         # causes the state change
@@ -1264,9 +1264,11 @@ class VncApiServer(VncApiServerGen):
             #    del obj_dict['id_perms']
             if 'id_perms' in obj_dict and obj_dict['id_perms']['uuid']:
                 if not self._db_conn.match_uuid(obj_dict, obj_uuid):
-                    log_msg = 'UUID mismatch from %s:%s' \
-                        % (request.environ['REMOTE_ADDR'],
-                           request.environ['HTTP_USER_AGENT'])
+                    # TODO(safchain) fix the log
+                    log_msg = 'UUID mismatch'
+                    #log_msg = 'UUID mismatch from %s:%s' \
+                    #    % (request.environ['REMOTE_ADDR'],
+                    #       request.environ['HTTP_USER_AGENT'])
                     self.config_object_error(
                         obj_uuid, fq_name_str, obj_type, 'put', log_msg)
                     self._db_conn.set_uuid(obj_type, obj_dict,
@@ -1292,14 +1294,15 @@ class VncApiServer(VncApiServerGen):
 
         # TODO check api + resource perms etc.
         if self._args.multi_tenancy:
-            return self._permissions.check_perms_write(request, obj_uuid)
+            return self._permissions.check_perms_write(context, obj_uuid)
 
         return (True, '')
     # end _http_put_common
 
     # parent_type needed for perms check. None for derived objects (eg.
     # routing-instance)
-    def _http_delete_common(self, request, obj_type, uuid, parent_type):
+    def _http_delete_common(self, context, obj_type, uuid, parent_type):
+        print "############### DELETE"
         # If not connected to zookeeper do not allow operations that
         # causes the state change
         if not self._db_conn._zk_db.is_connected():
@@ -1340,7 +1343,7 @@ class VncApiServer(VncApiServerGen):
             # parent uuid could be null for derived resources such as
             # routing-instance
             return (True, '')
-        return self._permissions.check_perms_write(request, parent_uuid)
+        return self._permissions.check_perms_write(context, parent_uuid)
     # end _http_delete_common
 
     def _http_post_validate(self, obj_type=None, obj_dict=None):
@@ -1368,7 +1371,7 @@ class VncApiServer(VncApiServerGen):
                 %(invalid_chars))
     # end _http_post_validate
 
-    def _http_post_common(self, request, obj_type, obj_dict):
+    def _db_post_common(self, body, obj_type, obj_dict):
         # If not connected to zookeeper do not allow operations that
         # causes the state change
         if not self._db_conn._zk_db.is_connected():
@@ -1413,7 +1416,7 @@ class VncApiServer(VncApiServerGen):
         apiConfig.identifier_name=fq_name_str
         apiConfig.identifier_uuid = uuid_in_req
         apiConfig.operation = 'post'
-        apiConfig.body = str(request.json)
+        apiConfig.body = str(body)
         if uuid_in_req:
             try:
                 fq_name = self._db_conn.uuid_to_fq_name(uuid_in_req)
@@ -1429,6 +1432,9 @@ class VncApiServer(VncApiServerGen):
         log.send(sandesh=self._sandesh)
 
         return (True, uuid_in_req)
+
+    def _http_post_common(self, request, obj_type, obj_dict):
+        return self._db_post_common(request.json, obj_type, obj_dict)
     # end _http_post_common
 
     def cleanup(self):
